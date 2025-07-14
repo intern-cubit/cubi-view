@@ -10,15 +10,36 @@ import win32serviceutil
 import win32service
 import win32event
 import servicemanager
-from datetime import datetime
 
-from credentials import ACTIVATION_PATH, REPORT_DIR
+from credentials import ACTIVATION_PATH
 from main import start_main
 from get_systemID import get_system_id
-from write_report import write_report
 
 API_URL = "https://api-keygen.obzentechnolabs.com/api/sadmin/check-activation"
 SERVICE_NAME = "ActivatorService"
+
+# === Elevation Logic ===
+def run_as_admin():
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return True
+    script = os.path.abspath(sys.argv[0])
+    params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+    try:
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", sys.executable, f'"{script}" {params}', None, 1
+        )
+        return False  # Current process exits; elevated one starts
+    except Exception as e:
+        print("[!] Failed to elevate to admin:", e)
+        return False
+
+# === Activation Check ===  
+def is_connected():
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
 
 def is_activated():
     if not os.path.exists(ACTIVATION_PATH):
@@ -37,7 +58,7 @@ def is_activated():
         with open(ACTIVATION_PATH, 'w') as f:
             json.dump(data, f, indent=4)
     except Exception as e:
-        print("[!] Failed to update activation file:", e)
+        servicemanager.LogErrorMsg(f"Failed to update activation file: {e}")
 
     payload = {
         "systemId": system_id,
@@ -52,39 +73,17 @@ def is_activated():
         servicemanager.LogErrorMsg(f"Activation check failed: {e}")
         return False
 
-def run_as_admin():
-    if ctypes.windll.shell32.IsUserAnAdmin():
-        return True
-    script = os.path.abspath(sys.argv[0])
-    params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
-    try:
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{script}" {params}', None, 1
-        )
-        return False  # Current process exits; elevated one starts
-    except Exception as e:
-        print("[!] Failed to elevate to admin:", e)
-        return False
-
-
+# === Monitoring Loop ===
 def run_start_main_forever():
     t = threading.Thread(target=start_main, daemon=False)
     t.start()
-
     try:
         while True:
             time.sleep(60)
     except Exception as e:
         servicemanager.LogErrorMsg(f"Main loop error: {e}")
 
-
-def is_connected():
-    try:
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
-        return True
-    except OSError:
-        return False
-
+# === Windows Service Class ===
 class ActivatorService(win32serviceutil.ServiceFramework):
     _svc_name_ = SERVICE_NAME
     _svc_display_name_ = "Activator Protection Service"
@@ -115,8 +114,8 @@ def setup_service_autorestart():
     os.system(f'sc failure "{SERVICE_NAME}" reset= 0 actions= restart/5000')
 
 if __name__ == '__main__':
-    # if not run_as_admin():
-    #     sys.exit(0)
+    if not run_as_admin():
+        sys.exit(0)
 
     # Check if the service is already installed
     try:
