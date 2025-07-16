@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # This script contains functions for Enabling and disabling Incognito in Browsers, 
 # block or unblock chrome extensions, 
 # whitelist websites
@@ -10,7 +11,7 @@ import subprocess
 import psutil
 from pathlib import Path
 import datetime
-from tkinter import messagebox
+# Removed tkinter messagebox; confirmation should be handled by frontend
 
 from write_report import write_report
 from credentials import REPORT_DIR, WHITELIST_FILE, BLOCKLIST_FILE
@@ -122,20 +123,35 @@ def restart_browsers():
             log_incognito_action(f"Restarted {exe}")
 
 
-def enable_incognito_blocking():
-    choice = messagebox.askyesno("CubiView", "This will close all the Browsers. Do you want to continue?")
-    if choice == True:
-        close_browsers()
-        for browser in CHROMIUM_BROWSERS:
-            set_chromium_registry(browser, allow=False)
-        set_firefox_policy(allow=False)
-        print("Incognito/Private mode DISABLED for all supported browsers.")
-        log_incognito_action("Incognito/Private mode DISABLED for all supported browsers.")
-        restart_browsers()
-    else:
-        messagebox.showinfo("CubiView","Incognito mode not enabled")
+def enable_incognito_blocking(confirmed: bool = False):
+    """
+    Enable incognito blocking for all supported browsers.
+    This will close all browsers and update policies.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
+    if not confirmed:
+        print("[Incognito Block] Action not confirmed by user. No changes made.")
+        log_incognito_action("Incognito block action not confirmed by user.")
+        return
+    close_browsers()
+    for browser in CHROMIUM_BROWSERS:
+        set_chromium_registry(browser, allow=False)
+    set_firefox_policy(allow=False)
+    print("Incognito/Private mode DISABLED for all supported browsers.")
+    log_incognito_action("Incognito/Private mode DISABLED for all supported browsers.")
+    restart_browsers()
 
-def disable_incognito_blocking():
+def disable_incognito_blocking(confirmed: bool = False):
+    """
+    Disable incognito blocking for all supported browsers.
+    This will close all browsers and update policies.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
+    if not confirmed:
+        print("[Incognito Unblock] Action not confirmed by user. No changes made.")
+        log_incognito_action("Incognito unblock action not confirmed by user.")
+        return
+    
     close_browsers()
     for browser in CHROMIUM_BROWSERS:
         set_chromium_registry(browser, allow=True)
@@ -147,14 +163,32 @@ def disable_incognito_blocking():
 ####################### Block / Unblock Chrome Extensions ################################
 
 # Block all chrome extensions
-def block_extensions():
+def block_extensions(confirmed: bool = False):
+    """
+    Block all Chrome extensions.
+    This will close all browsers and update policies.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
+    if not confirmed:
+        print("[Block Extensions] Action not confirmed by user. No changes made.")
+        log_chrome_ext("Block extensions action not confirmed by user.")
+        return
     subprocess.run("reg add HKLM\\Software\\Policies\\Google\\Chrome\\ExtensionInstallBlocklist /v 1 /t REG_SZ /d * /f", shell=True)
     log_chrome_ext(f" Blocked all Chrome Extenstions")
     close_browsers()
     restart_browsers()
 
 #Unblock all chrome extensions
-def unblock_extensions():
+def unblock_extensions(confirmed: bool = False):
+    """
+    Unblock all Chrome extensions.
+    This will close all browsers and update policies.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
+    if not confirmed:
+        print("[Unblock Extensions] Action not confirmed by user. No changes made.")
+        log_chrome_ext("Unblock extensions action not confirmed by user.")
+        return
     subprocess.run("reg delete HKLM\\Software\\Policies\\Google\\Chrome\\ExtensionInstallBlocklist /f", shell=True)
     log_chrome_ext(f" Unblocked all Chrome Extenstions")
     close_browsers()
@@ -189,7 +223,7 @@ def save_whitelist_sites(websites):
 def format_proxy_exceptions(sites):
     """
     Ensures both root and wildcarded subdomains are excluded from proxy
-    Example: ['chatgpt.com'] → ['chatgpt.com', '*.chatgpt.com']
+    Example: ['chatgpt.com'] -> ['chatgpt.com', '*.chatgpt.com']
     """
     exceptions = []
     for site in sites:

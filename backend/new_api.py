@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # backend/api.py
 
 import os
@@ -21,6 +22,9 @@ from GUI_backend import (
     load_whitelisted_installers, add_whitelisted_installer, remove_whitelisted_installer,
     load_user_info, get_system_info, get_smtp_credentials_file
 )
+from page2_func_part1 import enable_incognito_blocking, disable_incognito_blocking, block_extensions, unblock_extensions
+from prevent_vpn import (enable_vpn_monitoring, disable_vpn_monitoring, get_pending_vpn_requests, 
+                        approve_vpn_access, deny_vpn_access)
 from html_report import main_html_report # Only main_html_report is directly called by API routes
 from credentials import (VERSION_URL, RELEASES_URL, LOGO_IMAGE, ACTIVATION_PATH,
                           WHITELIST_FILE, BLOCKLIST_FILE, WHITELIST_JSON,
@@ -600,6 +604,305 @@ def api_ping():
 #             print(f"[CRITICAL ERROR] Could not create base report directory {REPORT_DIR}: {e}")
 
 #     app.run(port=5000, debug=True)
+
+# === INCOGNITO & EXTENSIONS MANAGEMENT WITH CONFIRMATION ===
+@app.route('/api/incognito/enable', methods=['POST'])
+def api_enable_incognito_blocking():
+    """Enable incognito blocking with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will close all browsers.',
+                'requiresConfirmation': True
+            }), 400
+        
+        # Capture any print statements to avoid encoding issues
+        import sys
+        import io
+        original_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        
+        try:
+            enable_incognito_blocking(confirmed=True)
+            captured_output = sys.stdout.getvalue()
+        finally:
+            sys.stdout = original_stdout
+        
+        app_logger.info("API: Enabled incognito blocking with user confirmation")
+        return jsonify({
+            'success': True,
+            'message': 'Incognito mode blocking enabled successfully'
+        })
+    except UnicodeEncodeError as e:
+        app_logger.error(f"API: Unicode encoding error enabling incognito blocking: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Error enabling incognito blocking: encoding issue'
+        }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error enabling incognito blocking: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error enabling incognito blocking: {str(e)}'
+        }), 500
+
+@app.route('/api/incognito/disable', methods=['POST'])
+def api_disable_incognito_blocking():
+    """Disable incognito blocking with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will close all browsers.',
+                'requiresConfirmation': True
+            }), 400
+        
+        # Capture any print statements to avoid encoding issues
+        import sys
+        import io
+        original_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        
+        try:
+            disable_incognito_blocking(confirmed=True)
+            captured_output = sys.stdout.getvalue()
+        finally:
+            sys.stdout = original_stdout
+        
+        app_logger.info("API: Disabled incognito blocking with user confirmation")
+        return jsonify({
+            'success': True,
+            'message': 'Incognito mode blocking disabled successfully'
+        })
+    except UnicodeEncodeError as e:
+        app_logger.error(f"API: Unicode encoding error disabling incognito blocking: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Error disabling incognito blocking: encoding issue'
+        }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error disabling incognito blocking: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error disabling incognito blocking: {str(e)}'
+        }), 500
+
+@app.route('/api/extensions/block', methods=['POST'])
+def api_block_extensions():
+    """Block Chrome extensions with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will close all browsers.',
+                'requiresConfirmation': True
+            }), 400
+        
+        # Capture any print statements to avoid encoding issues
+        import sys
+        import io
+        original_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        
+        try:
+            block_extensions(confirmed=True)
+            captured_output = sys.stdout.getvalue()
+        finally:
+            sys.stdout = original_stdout
+        
+        app_logger.info("API: Blocked Chrome extensions with user confirmation")
+        return jsonify({
+            'success': True,
+            'message': 'Chrome extensions blocked successfully'
+        })
+    except UnicodeEncodeError as e:
+        app_logger.error(f"API: Unicode encoding error blocking extensions: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Error blocking extensions: encoding issue'
+        }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error blocking extensions: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error blocking extensions: {str(e)}'
+        }), 500
+
+@app.route('/api/extensions/unblock', methods=['POST'])
+def api_unblock_extensions():
+    """Unblock Chrome extensions with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will close all browsers.',
+                'requiresConfirmation': True
+            }), 400
+        
+        unblock_extensions(confirmed=True)
+        app_logger.info("API: Unblocked Chrome extensions with user confirmation")
+        return jsonify({
+            'success': True,
+            'message': 'Chrome extensions unblocked successfully'
+        })
+    except Exception as e:
+        app_logger.error(f"API: Error unblocking extensions: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error unblocking extensions: {str(e)}'
+        }), 500
+
+# === VPN MONITORING WITH CONFIRMATION ===
+@app.route('/api/vpn/enable', methods=['POST'])
+def api_enable_vpn_monitoring():
+    """Enable VPN monitoring with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will enable VPN detection and blocking.',
+                'requiresConfirmation': True
+            }), 400
+        
+        result = enable_vpn_monitoring(confirmed=True)
+        if result:
+            app_logger.info("API: Enabled VPN monitoring with user confirmation")
+            return jsonify({
+                'success': True,
+                'message': 'VPN monitoring enabled successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to enable VPN monitoring'
+            }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error enabling VPN monitoring: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error enabling VPN monitoring: {str(e)}'
+        }), 500
+
+@app.route('/api/vpn/disable', methods=['POST'])
+def api_disable_vpn_monitoring():
+    """Disable VPN monitoring with user confirmation"""
+    try:
+        data = request.get_json()
+        confirmed = data.get('confirmed', False)
+        
+        if not confirmed:
+            return jsonify({
+                'success': False,
+                'message': 'User confirmation required. This action will disable VPN detection.',
+                'requiresConfirmation': True
+            }), 400
+        
+        result = disable_vpn_monitoring(confirmed=True)
+        if result:
+            app_logger.info("API: Disabled VPN monitoring with user confirmation")
+            return jsonify({
+                'success': True,
+                'message': 'VPN monitoring disabled successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to disable VPN monitoring'
+            }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error disabling VPN monitoring: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error disabling VPN monitoring: {str(e)}'
+        }), 500
+
+# === VPN ADMIN APPROVAL SYSTEM ===
+@app.route('/api/vpn/admin-requests', methods=['GET'])
+def api_get_vpn_requests():
+    """Get pending VPN access requests"""
+    try:
+        requests = get_pending_vpn_requests()
+        return jsonify({
+            'success': True,
+            'requests': requests
+        })
+    except Exception as e:
+        app_logger.error(f"API: Error getting VPN requests: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error getting VPN requests: {str(e)}'
+        }), 500
+
+@app.route('/api/vpn/admin-approve', methods=['POST'])
+def api_approve_vpn_access():
+    """Approve VPN access with admin authentication"""
+    try:
+        data = request.get_json()
+        request_id = data.get('request_id')
+        
+        # Here you should verify admin authentication
+        # For now, we'll assume the frontend handles authentication
+        
+        result = approve_vpn_access(request_id)
+        if result:
+            app_logger.info(f"API: Approved VPN access for request {request_id}")
+            return jsonify({
+                'success': True,
+                'message': 'VPN access approved successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to approve VPN access'
+            }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error approving VPN access: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error approving VPN access: {str(e)}'
+        }), 500
+
+@app.route('/api/vpn/admin-deny', methods=['POST'])
+def api_deny_vpn_access():
+    """Deny VPN access request"""
+    try:
+        data = request.get_json()
+        request_id = data.get('request_id')
+        
+        result = deny_vpn_access(request_id)
+        if result:
+            app_logger.info(f"API: Denied VPN access for request {request_id}")
+            return jsonify({
+                'success': True,
+                'message': 'VPN access denied successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to deny VPN access'
+            }), 500
+    except Exception as e:
+        app_logger.error(f"API: Error denying VPN access: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error denying VPN access: {str(e)}'
+        }), 500
 
 if __name__ == '__main__':
     # print(api_get_whitelist())

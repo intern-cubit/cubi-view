@@ -56,7 +56,7 @@ def write_report(directory: str,
                 else:
                     f.write(f"{line}\n")
 
-    print(f"[✓] Report saved to {filepath}")
+    print(f"[+] Report saved to {filepath}")
 
 
 
@@ -88,7 +88,7 @@ def zip_folder():
                     print(f"Error opening image {img_path}: {e}")
         if images:
             images[0].save(pdf_path, save_all=True, append_images=images[1:])
-            print(f"[✓] PDF created at: {pdf_path}")
+            print(f"[+] PDF created at: {pdf_path}")
         else:
             print("[!] No screenshots found to convert.")
     else:
@@ -98,7 +98,7 @@ def zip_folder():
     if os.path.exists(zip_path):
         try:
             os.remove(zip_path)
-            print(f"[✓] Existing zip deleted: {zip_path}")
+            print(f"[+] Existing zip deleted: {zip_path}")
         except Exception as e:
             print(f"Error deleting existing zip file {zip_path}: {e}")
             return None
@@ -114,7 +114,7 @@ def zip_folder():
                     file_path = os.path.join(root, file)
                     arcname = os.path.relpath(file_path, folder_path)
                     zipf.write(file_path, arcname)
-        print(f"[✓] Zipped folder saved to: {zip_path}")
+        print(f"[+] Zipped folder saved to: {zip_path}")
         return zip_path
     except Exception as e:
         print(f"Error creating zip archive: {e}")

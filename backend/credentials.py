@@ -12,7 +12,7 @@ Functions Defined:
 
 Usage in Other Files:
 ---------------------
-ADMIN_USERNAME, ADMIN_PASSWORD_HASH → Used in: GUI_V2.py
+ADMIN_USERNAME, ADMIN_PASSWORD_HASH -> Used in: GUI_V2.py
 
 Functions Imported from Other User-defined Modules:
 ---------------------------------------------------

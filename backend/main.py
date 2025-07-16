@@ -34,6 +34,25 @@ from page2_func_part3 import (enable_usb_ports, disable_usb_ports, enable_lunch_
 
 from shutdown_detection import run_schedule,handle_shutdown_event
 
+# Wrapper functions for auto-confirmed actions (for monitoring system)
+def auto_enable_incognito_blocking():
+    return enable_incognito_blocking(confirmed=True)
+
+def auto_disable_incognito_blocking():
+    return disable_incognito_blocking(confirmed=True)
+
+def auto_block_extensions():
+    return block_extensions(confirmed=True)
+
+def auto_unblock_extensions():
+    return unblock_extensions(confirmed=True)
+
+def auto_enable_vpn_monitoring():
+    return enable_vpn_monitoring(confirmed=True)
+
+def auto_disable_vpn_monitoring():
+    return disable_vpn_monitoring(confirmed=True)
+
     # Create threads
 schedule_thread = threading.Thread(target=run_schedule, name="DailyScheduler", daemon=True)
 shutdown_thread = threading.Thread(target=handle_shutdown_event, name="ShutdownMonitor", daemon=True) 
@@ -60,10 +79,10 @@ enable_funcs = {
     "Laptop Geolocation (IP/GPS Based)": enable_location_tracking,
     "Detect Login / Logout + Screen Lock / Unlock":enable_screen_lock_monitoring,
     ##################### Functions for Page 2 ########################
-    "VPN Detection & Blocking" : enable_vpn_monitoring, 
-    "Chrome Extension Restrictions" : block_extensions,
+    "VPN Detection & Blocking" : auto_enable_vpn_monitoring, 
+    "Chrome Extension Restrictions" : auto_block_extensions,
     "USB Port Access Control" : disable_usb_ports, 
-    "Incognito Mode Blocking" : enable_incognito_blocking,
+    "Incognito Mode Blocking" : auto_enable_incognito_blocking,
     "Website Whitelisting" : enable_website_whitelist,
     "Website Blocking" : enable_website_blocking,
     "Screenshot / Snipping Tool Prevention" : enable_screen_capture_block,
@@ -94,10 +113,10 @@ disable_funcs = {
     "Keystroke / Word Count": disable_keystroke_counter,
     "Detect Login / Logout + Screen Lock / Unlock": async_disable_screen_lock_monitoring,
     ##################### Functions for Page 2 ########################
-    "VPN Detection & Blocking" : disable_vpn_monitoring, 
-    "Chrome Extension Restrictions" : unblock_extensions,
+    "VPN Detection & Blocking" : auto_disable_vpn_monitoring, 
+    "Chrome Extension Restrictions" : auto_unblock_extensions,
     "USB Port Access Control" : enable_usb_ports, 
-    "Incognito Mode Blocking" : disable_incognito_blocking,
+    "Incognito Mode Blocking" : auto_disable_incognito_blocking,
     "Website Whitelisting" : disable_website_whitelist, 
     "Website Blocking" : disable_website_blocking,
     "Screenshot / Snipping Tool Prevention" : disable_screen_capture_block,
@@ -148,7 +167,7 @@ def start_watch_config():
     observer = Observer()
     observer.schedule(event_handler, path=os.path.dirname(os.path.abspath(CONFIG_PATH)), recursive=False)
     observer.start()
-    print("[✓] Watching monitor_config.json for changes...")
+    print("[+] Watching monitor_config.json for changes...")
 
     try:
         while True:

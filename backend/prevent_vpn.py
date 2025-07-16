@@ -2,13 +2,11 @@ import psutil
 import time
 from datetime import datetime, timedelta
 import subprocess
-
-#from GUI_V2 import authenticate_admin
-
 import threading
 
 vpn_monitoring_enabled = False
 vpn_monitoring_thread = None
+pending_vpn_requests = []  # Store pending admin approval requests
 
 
 
@@ -48,6 +46,59 @@ def is_vpn_running():
 def handle_vpn_detection():
     print("Authentication successful. VPN access granted.")
     unblock_vpn_ports()
+
+# Function to request admin approval for VPN access (API-based)
+def request_vpn_admin_approval():
+    """
+    Add a VPN access request to the pending queue.
+    This will be handled by the frontend through API calls.
+    """
+    request_data = {
+        "timestamp": datetime.now().isoformat(),
+        "type": "vpn_access_request",
+        "message": "VPN detected. Admin approval required for VPN access.",
+        "status": "pending"
+    }
+    pending_vpn_requests.append(request_data)
+    print("VPN admin approval request added to queue.")
+    return request_data
+
+def approve_vpn_access(request_id=None):
+    """
+    Approve VPN access and unblock VPN ports.
+    Can be called through API with admin authentication.
+    """
+    try:
+        handle_vpn_detection()
+        # Remove the request from pending queue if request_id provided
+        if request_id:
+            global pending_vpn_requests
+            pending_vpn_requests = [req for req in pending_vpn_requests if req.get("id") != request_id]
+        return True
+    except Exception as e:
+        print(f"Error approving VPN access: {e}")
+        return False
+
+def deny_vpn_access(request_id=None):
+    """
+    Deny VPN access request.
+    """
+    try:
+        # Remove the request from pending queue if request_id provided
+        if request_id:
+            global pending_vpn_requests
+            pending_vpn_requests = [req for req in pending_vpn_requests if req.get("id") != request_id]
+        print("VPN access denied.")
+        return True
+    except Exception as e:
+        print(f"Error denying VPN access: {e}")
+        return False
+
+def get_pending_vpn_requests():
+    """
+    Get all pending VPN access requests.
+    """
+    return pending_vpn_requests
     
     # Run timer in a thread
     threading.Thread(target=vpn_timer_task, daemon=True).start()
@@ -124,8 +175,8 @@ def disable_vpn_adapter(adapter_name):
 def monitor_vpn_usage():
     if is_vpn_running():
         block_vpn()
-        launch_admin_login(window_title="VPN Access Request",heading="Requesting Admin Approval for VPN Access",
-                           on_success=handle_vpn_detection)
+        # Instead of launching GUI, add to pending requests queue
+        request_vpn_admin_approval()
     else:
         print("No VPN detected.")
 
@@ -144,128 +195,57 @@ def unblock_vpn_ports():
         subprocess.run(command, shell=True)
         print(f"Firewall rule removed for port {port}")
 
-def enable_vpn_monitoring():
+def enable_vpn_monitoring(confirmed: bool = False):
+    """
+    Enable VPN monitoring with optional confirmation.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
     global vpn_monitoring_enabled, vpn_monitoring_thread
     if vpn_monitoring_enabled:
         print("VPN monitoring is already enabled.")
-        return
+        return True
+        
+    if not confirmed:
+        print("[VPN Monitoring] Action not confirmed by user. No changes made.")
+        return False
+    
     vpn_monitoring_enabled = True
     vpn_monitoring_thread = threading.Thread(target=start_vpn_monitoring, daemon=True)
     vpn_monitoring_thread.start()
-    print("VPN monitoring ENABLED.")
+    print("VPN monitoring started.")
+    return True
 
-def disable_vpn_monitoring():
+def disable_vpn_monitoring(confirmed: bool = False):
+    """
+    Disable VPN monitoring with optional confirmation.
+    Confirmation must be handled by the frontend and passed as 'confirmed'.
+    """
+    global vpn_monitoring_enabled
+    if not vpn_monitoring_enabled:
+        print("VPN monitoring is already disabled.")
+        return True
+        
+    if not confirmed:
+        print("[VPN Monitoring] Action not confirmed by user. No changes made.")
+        return False
+    
+    vpn_monitoring_enabled = False
+    print("VPN monitoring stopped.")
+    return True
+
+def disable_vpn_monitoring_legacy():
+    """Legacy function - use disable_vpn_monitoring(confirmed=True) instead"""
     global vpn_monitoring_enabled
     vpn_monitoring_enabled = False
     unblock_vpn_ports()
     print("VPN monitoring DISABLED.")
 
-
-
-from credentials import ACTIVATION_PATH, LOGO_IMAGE
-
-import tkinter as tk
-from tkinter import messagebox
-import ttkbootstrap as tb
-import requests
-
-
-def launch_admin_login(parent_window=None, window_title="Admin Login", 
-                       heading="Admin Access Required", sidebar=None, 
-                       container=None, on_success=None):
-    auth_result = [False]  # mutable flag to track success
-    def authenticate():
-        entered_username = username_var.get()
-        entered_password = password_var.get()
-
-        try:
-            res = requests.post(
-                "https://api-keygen.obzentechnolabs.com/api/auth/login",
-                json={"identifier": entered_username, "password": entered_password},
-                timeout=10
-            )
-            res_data = res.json()
-            print("Server response:", res_data)  # debug
-
-            if res.status_code == 200 and "token" in res_data and "user" in res_data:
-                auth_result[0] = True  # keep same flag for success
-
-                login_frame.place_forget()
-                if sidebar:
-                    sidebar.pack(side=tk.LEFT, fill=tk.Y)
-                if container:
-                    container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-                if on_success:
-                    on_success()
-
-            else:
-                messagebox.showerror("Authentication Failed", res_data.get("message", "Invalid credentials."))
-
-        except Exception as e:
-            messagebox.showerror("Connection Error", f"Could not connect to server:\n{e}")
-
-
-    # Use existing window or create new one
-    root = parent_window if parent_window else tb.Window(themename="cosmo")
-    root.title(window_title)
-    root.geometry("1000x600")
-    root.minsize(800, 500)
-    root.iconphoto(False, tk.PhotoImage(file=LOGO_IMAGE))
-
-    # Login Frame centered using `place` for better responsiveness
-    login_frame = tb.Frame(root, padding=40)
-    login_frame.place(relx=0.5, rely=0.5, anchor="center")
-    login_frame.pack_propagate(False)
-
-    # Adjust size proportionally to window
-    def resize_frame(event=None):
-        width = root.winfo_width()
-        height = root.winfo_height()
-        login_frame.config(width=int(width * 0.6), height=int(height * 0.75))
-
-    root.bind("<Configure>", resize_frame)
-    resize_frame()
-
-    # Grid configuration
-    for i in range(3):
-        login_frame.grid_columnconfigure(i, weight=1)
-
-    # Logo
-    try:
-        logo_img = tk.PhotoImage(file=LOGO_IMAGE).subsample(3, 3)
-        logo_label = tk.Label(login_frame, image=logo_img)
-        logo_label.image = logo_img
-        logo_label.grid(row=0, column=0, columnspan=3, pady=(10, 30))
-    except Exception as e:
-        print("Logo load failed:", e)
-
-    # Heading
-    tb.Label(login_frame, text=heading, font=("Poppins", 18, "bold")).grid(row=1, column=0, columnspan=3, pady=(0, 20))
-
-    # Input variables
-    username_var = tk.StringVar()
-    password_var = tk.StringVar()
-
-    # Grid weights to balance layout
-    for i in range(3):
-        login_frame.grid_columnconfigure(i, weight=1)
-
-    # Username Label
-    tb.Label(login_frame, text="Username", font=("Segoe UI", 10)).grid(row=2, column=1, sticky="w", padx=50, pady=5)
-
-    # Username Entry
-    tb.Entry(login_frame, textvariable=username_var, width=30).grid(row=2, column=1, padx=(150,5), pady=5)
-
-    # Password Label
-    tb.Label(login_frame, text="Password", font=("Segoe UI", 10)).grid(row=3, column=1, sticky="w", padx=50, pady=5)
-
-    # Password Entry
-    tb.Entry(login_frame, textvariable=password_var, show="*", width=30).grid(row=3, column=1, padx=(150,5),  pady=5)
-
-    # Authenticate Button
-    tb.Button(login_frame, text="Authenticate", bootstyle="success", width=25, command=authenticate).grid(row=4, column=1, pady=20)
-
-    root.mainloop()
-    print(auth_result[0])
-    return auth_result[0]  # return True if authentication succeeded
-    
+# Legacy function signatures for backward compatibility 
+# These will be replaced by API-based admin authentication
+def launch_admin_login(*args, **kwargs):
+    """
+    Deprecated: This function has been replaced by API-based admin authentication.
+    Use the /api/vpn/admin-request endpoint instead.
+    """
+    print("WARNING: launch_admin_login is deprecated. Use API-based authentication instead.")
+    return False

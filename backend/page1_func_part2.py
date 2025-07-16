@@ -247,7 +247,7 @@ class BrowserTracking:
 class ApplicationTracking:
     def __init__(self):
         self.activities = []
-        self.running = True  # ← Add this as a variable for stopping the thread on turning off the toggle switch
+        self.running = True  # Add this as a variable for stopping the thread on turning off the toggle switch
 
     def get_active_window(self):
         try:
