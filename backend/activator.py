@@ -1,45 +1,21 @@
+# -*- coding: utf-8 -*-
 import os
-import sys
 import json
+import requests
+import sys
+import ctypes
 import time
 import threading
 import socket
-import requests
-import ctypes
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
+from datetime import datetime
 
-from credentials import ACTIVATION_PATH
+from credentials import ACTIVATION_PATH, REPORT_DIR
 from main import start_main
 from get_systemID import get_system_id
+from write_report import write_report
 
 API_URL = "https://api-keygen.obzentechnolabs.com/api/sadmin/check-activation"
-SERVICE_NAME = "ActivatorService"
-
-# === Elevation Logic ===
-def run_as_admin():
-    if ctypes.windll.shell32.IsUserAnAdmin():
-        return True
-    script = os.path.abspath(sys.argv[0])
-    params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
-    try:
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{script}" {params}', None, 1
-        )
-        return False  # Current process exits; elevated one starts
-    except Exception as e:
-        print("[!] Failed to elevate to admin:", e)
-        return False
-
-# === Activation Check ===  
-def is_connected():
-    try:
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
-        return True
-    except OSError:
-        return False
+HEALTH_LOG_FILE = os.path.join(REPORT_DIR, "health.log")
 
 def is_activated():
     if not os.path.exists(ACTIVATION_PATH):
@@ -58,7 +34,7 @@ def is_activated():
         with open(ACTIVATION_PATH, 'w') as f:
             json.dump(data, f, indent=4)
     except Exception as e:
-        servicemanager.LogErrorMsg(f"Failed to update activation file: {e}")
+        print("[!] Failed to update activation file:", e)
 
     payload = {
         "systemId": system_id,
@@ -67,78 +43,69 @@ def is_activated():
 
     try:
         res = requests.post(API_URL, json=payload, timeout=10)
+        print("Server response:", res)
         res_json = res.json()
+        print("Server response:", res_json)
         return res_json.get("success") and res_json.get("activationStatus") == "active"
     except Exception as e:
-        servicemanager.LogErrorMsg(f"Activation check failed: {e}")
+        print("[!] Activation check failed:", e)
         return False
 
-# === Monitoring Loop ===
+def run_as_admin():
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return True
+    script = os.path.abspath(sys.argv[0])
+    params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
+    try:
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", sys.executable, f'"{script}" {params}', None, 1
+        )
+        return False  # Current process exits; elevated one starts
+    except Exception as e:
+        print("[!] Failed to elevate to admin:", e)
+        return False
+
+
 def run_start_main_forever():
+    print("[+] Starting monitoring in background...")
+
+    # Start monitoring in thread
     t = threading.Thread(target=start_main, daemon=False)
     t.start()
+
+    print("[+] Monitoring running. Writing health log every minute.")
     try:
         while True:
+            # write_health_log("Monitoring alive for debugging")
+            write_report(REPORT_DIR, "health_log", f"Monitoring alive at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", title="Health Log", with_timestamp=True)
             time.sleep(60)
     except Exception as e:
-        servicemanager.LogErrorMsg(f"Main loop error: {e}")
+        print("[!] Unexpected exception in health loop:", e)
+        # write_health_log(f"Unexpected exception: {e}")
+        write_report(REPORT_DIR, "health_log", f"Unexpected exception: {e} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", title="Health Log", with_timestamp=True)
 
-# === Windows Service Class ===
-class ActivatorService(win32serviceutil.ServiceFramework):
-    _svc_name_ = SERVICE_NAME
-    _svc_display_name_ = "Activator Protection Service"
-    _svc_description_ = "Protects and monitors CubiView software."
 
-    def __init__(self, args):
-        super().__init__(args)
-        self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+def is_connected():
+    try:
+        # Try to resolve a DNS (like Google)
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
 
-    def SvcStop(self):
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
-        win32event.SetEvent(self.hWaitStop)
-
-    def SvcDoRun(self):
-        servicemanager.LogInfoMsg("ActivatorService started.")
-        while not is_connected():
-            servicemanager.LogInfoMsg("Waiting for internet...")
-            time.sleep(5)
-
-        if is_activated():
-            servicemanager.LogInfoMsg("System activated. Starting monitoring...")
-            run_start_main_forever()
-        else:
-            servicemanager.LogErrorMsg("Activation failed.")
-
-# === Auto-Restart Setup ===
-def setup_service_autorestart():
-    os.system(f'sc failure "{SERVICE_NAME}" reset= 0 actions= restart/5000')
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     if not run_as_admin():
-        sys.exit(0)
-
-    # Check if the service is already installed
-    try:
-        win32serviceutil.QueryServiceStatus(SERVICE_NAME)
-        service_exists = True
-    except Exception:
-        service_exists = False
-
-    if not service_exists:
-        print("[+] Installing service...")
-        win32serviceutil.InstallService(
-            pythonClassString='activator.ActivatorService',
-            serviceName=SERVICE_NAME,
-            displayName="Activator Protection Service",
-            description="Protects and monitors CubiView software.",
-            startType=win32service.SERVICE_AUTO_START
-        )
-        setup_service_autorestart()
-        print("[+] Service installed.")
-
-    try:
-        print("[+] Starting service...")
-        win32serviceutil.StartService(SERVICE_NAME)
-        print("[✓] Service started.")
-    except Exception as e:
-        print(f"[!] Failed to start service: {e}")
+        sys.exit()
+    # run_start_main_forever()
+    # print("[DEBUG] Activation success, starting monitoring...")
+            # Wait for internet connection
+    print("Checking for internet connection...")
+    while not is_connected():
+        print("No internet connection. Retrying in 5 seconds...")
+        time.sleep(5)
+    print("Internet connected!")
+    if is_activated():
+        print("[DEBUG] Activation success, starting monitoring...")
+        run_start_main_forever()
+    else:
+        print("[!] Activation failed. main.py will not be launched.")

@@ -330,7 +330,7 @@ class WelcomeContentFrame(ttk.Frame):
         for proc in psutil.process_iter(['pid', 'name']):
             if proc.info['name'].lower() in ('activator.exe'):
                 proc.terminate()
-                messagebox.showinfo("Stopped", "[✓] Monitoring stopped.")
+                messagebox.showinfo("Stopped", "[+] Monitoring stopped.")
                 return
         messagebox.showinfo("Info", "Monitoring was not running.")
 

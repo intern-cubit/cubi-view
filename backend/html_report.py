@@ -495,7 +495,7 @@ def generate_html_report(current_report_dir, current_output_html, current_app_ba
 
             f.write("</body></html>")
 
-        print(f"[✓] HTML report generated at: {current_output_html}")
+        print(f"[+] HTML report generated at: {current_output_html}")
     except Exception as e:
         print(f"[ERROR] Failed to write HTML report {current_output_html}: {e}")
 

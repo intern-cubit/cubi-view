@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   X
 } from 'lucide-react';
+import ConfirmationDialog from './ConfirmationDialog';
+import VpnAuthDialog from './VpnAuthDialog';
 
 const featureMapping = {
   "VPN Detection & Blocking": {
@@ -104,6 +106,15 @@ const LimitDevicePage = ({ apiBaseUrl }) => {
   const [config, setConfig] = useState({});
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null,
+    type: 'warning'
+  });
+  const [showVpnAuthDialog, setShowVpnAuthDialog] = useState(false);
+  const [pendingVpnAction, setPendingVpnAction] = useState(null);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -143,6 +154,71 @@ const LimitDevicePage = ({ apiBaseUrl }) => {
     let successMessage = `'${featureKey}' successfully ${newStatus ? 'enabled' : 'disabled'}.`;
     let errorMessage = `Failed to update '${featureKey}'.`;
 
+    // Handle VPN Detection & Blocking separately (requires admin credentials)
+    if (featureKey === "VPN Detection & Blocking") {
+      const action = newStatus ? 'enable' : 'disable';
+      setPendingVpnAction({ action, newStatus, updates, successMessage, errorMessage });
+      setShowVpnAuthDialog(true);
+      return;
+    }
+
+    // Handle other features that require browser closure confirmation
+    const browserClosingFeatures = ["Incognito Mode Blocking", "Chrome Extension Restrictions"];
+    if (browserClosingFeatures.includes(featureKey)) {
+      const action = newStatus ? 'enable' : 'disable';
+      
+      // Show confirmation dialog
+      setConfirmDialog({
+        isOpen: true,
+        title: `${action === 'enable' ? 'Enable' : 'Disable'} ${featureKey}`,
+        message: `${action === 'enable' ? 'Enabling' : 'Disabling'} ${featureKey} will close all open browsers. Do you want to continue?`,
+        type: 'warning',
+        onConfirm: async () => {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          
+          // Handle special API calls for incognito and extensions
+          try {
+            let apiEndpoint = '';
+            if (featureKey === "Incognito Mode Blocking") {
+              apiEndpoint = newStatus ? '/incognito/enable' : '/incognito/disable';
+            } else if (featureKey === "Chrome Extension Restrictions") {
+              apiEndpoint = newStatus ? '/extensions/block' : '/extensions/unblock';
+            }
+
+            const response = await fetch(`${apiBaseUrl}${apiEndpoint}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ confirmed: true }),
+            });
+            
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(data.message || `Failed to ${action} ${featureKey}`);
+            }
+
+            // If successful, update the config through the regular toggle endpoint
+            setConfig(prev => ({ ...prev, ...updates }));
+            const configResponse = await fetch(`${apiBaseUrl}/toggle`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ features: updates }),
+            });
+            
+            setMessage(successMessage);
+            setMessageType('success');
+            return;
+          } catch (error) {
+            console.error(`Error ${action}ing ${featureKey}:`, error);
+            setMessage(`Failed to ${action} ${featureKey}: ${error.message}`);
+            setMessageType('error');
+            return;
+          }
+        }
+      });
+      
+      return; // Exit early, dialog will handle the rest
+    }
+
     // Handle mutual exclusivity for Website Whitelisting and Website Blocking
     if (featureKey === "Website Whitelisting" && newStatus) {
       if (config["Website Blocking"]) {
@@ -179,6 +255,62 @@ const LimitDevicePage = ({ apiBaseUrl }) => {
         revertedUpdates[key] = config[key];
       }
       setConfig(prev => ({ ...prev, ...revertedUpdates }));
+    }
+  };
+
+  const handleVpnAuth = async (credentials) => {
+    if (!pendingVpnAction) return;
+
+    const { action, newStatus, updates, successMessage, errorMessage } = pendingVpnAction;
+
+    try {
+      // First authenticate admin
+      const authResponse = await fetch(`${apiBaseUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: credentials.username,
+          password: credentials.password
+        })
+      });
+
+      const authData = await authResponse.json();
+      if (!authResponse.ok || !authData.token) {
+        throw new Error('Invalid admin credentials');
+      }
+
+      // Then enable/disable VPN
+      const apiEndpoint = newStatus ? '/vpn/enable' : '/vpn/disable';
+      const response = await fetch(`${apiBaseUrl}${apiEndpoint}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authData.token}`
+        },
+        body: JSON.stringify({ confirmed: true }),
+      });
+      
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || `Failed to ${action} VPN Detection & Blocking`);
+      }
+
+      // If successful, update the config
+      setConfig(prev => ({ ...prev, ...updates }));
+      const configResponse = await fetch(`${apiBaseUrl}/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: updates }),
+      });
+      
+      setMessage(successMessage);
+      setMessageType('success');
+      setShowVpnAuthDialog(false);
+      setPendingVpnAction(null);
+    } catch (error) {
+      console.error(`Error ${action}ing VPN Detection & Blocking:`, error);
+      // Don't close dialog on auth error, let user retry
+      throw error;
     }
   };
 
@@ -339,6 +471,33 @@ const LimitDevicePage = ({ apiBaseUrl }) => {
           </p>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onClose={() => {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+          setMessage('Operation cancelled by user.');
+          setMessageType('info');
+        }}
+      />
+
+      {/* VPN Auth Dialog */}
+      <VpnAuthDialog
+        isOpen={showVpnAuthDialog}
+        action={pendingVpnAction?.action}
+        onClose={() => {
+          setShowVpnAuthDialog(false);
+          setPendingVpnAction(null);
+          setMessage('VPN operation cancelled by user.');
+          setMessageType('info');
+        }}
+        onAuthenticate={handleVpnAuth}
+      />
     </div>
   );
 };

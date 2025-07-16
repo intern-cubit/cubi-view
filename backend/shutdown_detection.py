@@ -174,11 +174,11 @@ def handle_shutdown_event():
 def run_schedule():
     def daily_wrapper():
         if datetime.now().weekday() != 6:  # Skip Sundays
-            print("[✓] Running daily task at 23:59")
+            print("[+] Running daily task at 23:59")
             task_to_run()
 
     def hourly_wrapper():
-        print(f"[✓] Hourly report generated at {datetime.now().strftime('%H:%M')}")
+        print(f"[+] Hourly report generated at {datetime.now().strftime('%H:%M')}")
         generate_enabled_reports()
 
     # Schedule daily task
