@@ -68,6 +68,16 @@ const WelcomePage = ({ systemId, activationKey, localVersion, userInfo, apiBaseU
       if (response.ok && data.success) { // Property name changed
         setMessage('Activation key saved successfully!');
         setMessageType('success');
+        
+        // Refresh the application after successful activation
+        setTimeout(() => {
+          if (window.electronAPI && window.electronAPI.reloadApp) {
+            window.electronAPI.reloadApp();
+          } else {
+            // Fallback for web environment
+            window.location.reload();
+          }
+        }, 1500); // Wait 1.5 seconds to show the success message
       } else {
         setMessage(data.message || 'Could not save activation key.');
         setMessageType('error');

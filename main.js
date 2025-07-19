@@ -323,6 +323,50 @@ function createWindow() {
         app.quit();
     }
 
+    // Handle zoom keyboard shortcuts
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        // Debug: Log all Ctrl key combinations for troubleshooting
+        if (input.control) {
+            console.log(`[ZOOM DEBUG] Ctrl + ${input.key}, shift: ${input.shift}, alt: ${input.alt}`);
+        }
+        
+        // Zoom in: Multiple key combinations for different keyboards
+        if (input.control && !input.alt && (
+            (input.key === '=' && !input.shift) ||  // Ctrl + = (US keyboard)
+            (input.key === '+' && input.shift) ||   // Ctrl + Shift + = (which produces +)
+            input.key === '+' ||                    // Direct Ctrl + + 
+            input.key === 'plus' ||                 // Some keyboards report as 'plus'
+            input.key === 'Equal'                   // Some systems report as 'Equal'
+        )) {
+            event.preventDefault();
+            const currentZoom = mainWindow.webContents.getZoomFactor();
+            const newZoom = Math.min(currentZoom + 0.1, 3.0);
+            mainWindow.webContents.setZoomFactor(newZoom);
+            console.log(`[ZOOM] Zoom in: ${newZoom}`);
+        }
+        // Zoom out: Ctrl + Minus
+        else if (input.control && !input.alt && (
+            input.key === '-' || 
+            input.key === 'minus' || 
+            input.key === 'Minus'
+        )) {
+            event.preventDefault();
+            const currentZoom = mainWindow.webContents.getZoomFactor();
+            const newZoom = Math.max(currentZoom - 0.1, 0.3);
+            mainWindow.webContents.setZoomFactor(newZoom);
+            console.log(`[ZOOM] Zoom out: ${newZoom}`);
+        }
+        // Reset zoom: Ctrl + 0
+        else if (input.control && !input.alt && (
+            input.key === '0' || 
+            input.key === 'Digit0'
+        )) {
+            event.preventDefault();
+            mainWindow.webContents.setZoomFactor(1.0);
+            console.log(`[ZOOM] Reset zoom: 1.0`);
+        }
+    });
+
     mainWindow.on("closed", () => {
         console.log(
             "[MAIN WINDOW] mainWindow was closed, setting reference to null."
