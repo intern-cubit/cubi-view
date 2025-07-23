@@ -22,7 +22,7 @@ cubiview-desktop/
 │   ├── activation.json
 │   ├── user_ID.json
 │   ├── version.txt
-│   └── requirements.txt      # list python packages
+│   └── requirements.txt      # list python packages, yet to add
 │
 ├── frontend/
 │   ├── src/
