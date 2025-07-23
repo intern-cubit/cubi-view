@@ -7,6 +7,7 @@ from flask_cors import CORS
 import requests
 import json
 import logging
+from datetime import datetime
 from get_systemID import get_system_id
 
 # Configure logging for the API
@@ -93,7 +94,11 @@ def api_login():
 
     try:
         app_logger.info(f"API: Attempting login for user: {username}")
-        res = requests.post("https://api-keygen.obzentechnolabs.com/api/auth/login", json={
+        # res = requests.post("https://api-keygen.obzentechnolabs.com/api/auth/login", json={
+        #     "identifier": username,
+        #     "password": password
+        # }, timeout=10)
+        res = requests.post("https://cubiview.onrender.com/api/auth/login", json={
             "identifier": username,
             "password": password
         }, timeout=10)
@@ -155,8 +160,13 @@ def api_forgot_password():
 
     try:
         app_logger.info(f"API: Attempting forgot password for email: {email}")
+        # res = requests.post(
+        #     "https://api-keygen.obzentechnolabs.com/api/auth/forgot-password",
+        #     json={"email": email},
+        #     timeout=10
+        # )
         res = requests.post(
-            "https://api-keygen.obzentechnolabs.com/api/auth/forgot-password",
+            "https://cubiview.onrender.com/api/auth/forgot-password",
             json={"email": email},
             timeout=10
         )
@@ -308,7 +318,13 @@ def api_save_activation():
         app_logger.warning("API: Activation key is missing in request.")
         return jsonify({"message": "Activation key is required."}), 400
     try: 
-        res = requests.post("https://api-keygen.obzentechnolabs.com/api/device/verify-device", json={
+        # res = requests.post("https://api-keygen.obzentechnolabs.com/api/device/verify-device", json={
+        #         "systemId": systemId,
+        #         "activationKey": key,
+        #         "appName": "Cubi-View"
+        #     }, timeout=10)
+
+        res = requests.post("https://cubiview.onrender.com/api/device/verify-device", json={
                 "systemId": systemId,
                 "activationKey": key,
                 "appName": "Cubi-View"
@@ -466,6 +482,45 @@ def send_report_email_api():
     except Exception as e:
         app_logger.exception(f"API: An error occurred while sending the report email: {e}")
         return jsonify({"message": f"An error occurred while sending the report email: {str(e)}"}, 500)
+
+# === CLOUD UPLOAD ===
+@app.route('/api/reports/upload-cloud', methods=['POST'])
+def api_upload_report_to_cloud():
+    """Manually upload the latest report to cloud"""
+    app_logger.info("API: Received request to upload report to cloud...")
+    try:
+        # Get the latest report information
+        date_str = datetime.now().strftime("%d-%m-%Y")
+        report_dir_for_today = os.path.join(REPORT_DIR, date_str)
+        zip_file_path = os.path.join(report_dir_for_today, f"CubiView_Report_{date_str}.zip")
+        
+        # Check if zip file exists, if not create it
+        if not os.path.exists(zip_file_path):
+            if not os.path.exists(report_dir_for_today):
+                app_logger.error("API: Report directory not found for cloud upload")
+                return jsonify({"success": False, "message": "No report found for today"}), 404
+            
+            # Import the functions from html_report
+            from html_report import create_report_zip
+            if not create_report_zip(report_dir_for_today, zip_file_path):
+                app_logger.error("API: Failed to create zip file for cloud upload")
+                return jsonify({"success": False, "message": "Failed to create zip file"}), 500
+        
+        # Upload to cloud
+        from html_report import upload_report_to_cloud
+        system_id = get_system_id()
+        upload_result = upload_report_to_cloud(zip_file_path, system_id)
+        
+        app_logger.info(f"API: Cloud upload result: {upload_result}")
+        
+        if upload_result.get("success"):
+            return jsonify(upload_result), 200
+        else:
+            return jsonify(upload_result), 500
+            
+    except Exception as e:
+        app_logger.exception(f"API: Error during manual cloud upload: {e}")
+        return jsonify({"success": False, "message": f"Upload error: {str(e)}"}), 500
 
 # === WEBSITE WHITELIST ===
 @app.route('/api/whitelist', methods=['GET'])

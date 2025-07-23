@@ -185,7 +185,7 @@ def run_schedule():
     schedule.every().day.at("23:59").do(daily_wrapper)
 
     # Schedule hourly task (runs at start of each hour)
-    schedule.every().hour.at(":00").do(hourly_wrapper)
+    schedule.every().hour.at(":05").do(hourly_wrapper)
 
     while True:
         schedule.run_pending()

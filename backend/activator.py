@@ -14,7 +14,8 @@ from main import start_main
 from get_systemID import get_system_id
 from write_report import write_report
 
-API_URL = "https://api-keygen.obzentechnolabs.com/api/sadmin/check-activation"
+# API_URL = "https://api-keygen.obzentechnolabs.com/api/sadmin/check-activation"
+API_URL = "https://cubiview.onrender.com/api/sadmin/check-activation"
 HEALTH_LOG_FILE = os.path.join(REPORT_DIR, "health.log")
 
 def is_activated():
@@ -38,7 +39,7 @@ def is_activated():
 
     payload = {
         "systemId": system_id,
-        "appName": "Cubi-View",
+        "activationKey": data.get("activationKey")
     }
 
     try:
