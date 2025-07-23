@@ -2,11 +2,11 @@ import os
 from datetime import datetime
 from typing import List, Union
 import zipfile
-from credentials import REPORT_DIR
 from PIL import Image
 import textwrap
-from credentials import SMTP_CREDENTIALS_FILE
+import getpass
 
+from credentials import REPORT_DIR, SMTP_CREDENTIALS_FILE
 
 def write_report(directory: str,
                  base_filename: str,
@@ -14,7 +14,7 @@ def write_report(directory: str,
                  title: str = None,
                  with_timestamp: bool = True,
                  mode: str = 'a',
-                 wrap_width: int = 70):  # <-- new param
+                 wrap_width: int = 70):
     """
     Universal report writer that creates/updates a report file.
 
@@ -27,12 +27,13 @@ def write_report(directory: str,
     :param wrap_width: Maximum characters per line before wrapping.
     """
 
+    user = getpass.getuser()
     date_str = datetime.now().strftime("%d-%m-%Y")
-    dated_directory = os.path.join(directory, date_str)
-    os.makedirs(dated_directory, exist_ok=True)
+    user_directory = os.path.join(directory, date_str, user)
+    os.makedirs(user_directory, exist_ok=True)
 
     full_filename = f"{base_filename}.txt"
-    filepath = os.path.join(dated_directory, full_filename)
+    filepath = os.path.join(user_directory, full_filename)
 
     timestamp_format = "[%Y-%m-%d %H:%M:%S]"
 
@@ -57,7 +58,6 @@ def write_report(directory: str,
                     f.write(f"{line}\n")
 
     print(f"[+] Report saved to {filepath}")
-
 
 
 ############### Create a Folder for Daily reports and Zip it ###########################
