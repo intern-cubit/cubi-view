@@ -69,7 +69,12 @@ def api_login():
         return jsonify({"message": "Username and password are required"}), 400
 
     try:
-        res = requests.post("https://api-keygen.obzentechnolabs.com/api/auth/login", json={
+        # res = requests.post("https://api-keygen.obzentechnolabs.com/api/auth/login", json={
+        #     "identifier": username,
+        #     "password": password
+        # }, timeout=10)
+
+        res = requests.post("https://cubiview.onrender.com/api/auth/login", json={
             "identifier": username,
             "password": password
         }, timeout=10)
@@ -118,8 +123,14 @@ def api_forgot_password():
         return jsonify({"message": "Email is required", "success": False}), 400
 
     try:
+        # res = requests.post(
+        #     "https://api-keygen.obzentechnolabs.com/api/auth/forgot-password",
+        #     json={"email": email},
+        #     timeout=10
+        # )
+
         res = requests.post(
-            "https://api-keygen.obzentechnolabs.com/api/auth/forgot-password",
+            "https://cubiview.onrender.com/api/auth/forgot-password",
             json={"email": email},
             timeout=10
         )

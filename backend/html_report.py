@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 import math
+import zipfile
+import requests
+import logging
 
 # Assuming credentials.py is accessible and contains these paths
 # You would need to ensure credentials.py exists and has these defined:
@@ -25,6 +28,18 @@ except Exception as e:
     print(f"[ERROR] Error importing from credentials.py: {e}. Using defaults.")
     REPORT_DIR = 'reports'
     CONFIG_PATH = 'config.json'
+
+# Import get_system_id for cloud upload
+try:
+    from get_systemID import get_system_id
+except ImportError:
+    print("[ERROR] Failed to import get_system_id. Cloud upload will not work.")
+    def get_system_id():
+        return "unknown"
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+html_report_logger = logging.getLogger('html_report_logger')
 
 
 # === Global Variables for Report Data ===
@@ -499,11 +514,200 @@ def generate_html_report(current_report_dir, current_output_html, current_app_ba
     except Exception as e:
         print(f"[ERROR] Failed to write HTML report {current_output_html}: {e}")
 
+def create_report_zip(report_dir, zip_filename):
+    """
+    Creates a zip file containing all files from the report directory.
+    
+    Args:
+        report_dir (str): Path to the report directory to zip
+        zip_filename (str): Path where the zip file should be created
+    
+    Returns:
+        bool: True if zip creation was successful, False otherwise
+    """
+    try:
+        html_report_logger.info(f"Creating zip file: {zip_filename} from directory: {report_dir}")
+        
+        # Check if source directory exists
+        if not os.path.exists(report_dir):
+            html_report_logger.error(f"Source directory does not exist: {report_dir}")
+            return False
+        
+        # Count files to be zipped
+        file_count = 0
+        files_to_zip = []
+        zip_filename_base = os.path.basename(zip_filename)
+        
+        for root, dirs, files in os.walk(report_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                # Skip any zip files to avoid recursion
+                if not file.endswith('.zip') and file_path != zip_filename:
+                    files_to_zip.append((file_path, os.path.relpath(file_path, report_dir)))
+                    file_count += 1
+        
+        html_report_logger.info(f"Found {file_count} files to zip")
+        
+        if file_count == 0:
+            html_report_logger.warning(f"No files found in directory {report_dir} to zip")
+            # Create an empty zip file with a note
+            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.writestr('README.txt', 'This report directory was empty at the time of zip creation.')
+            return True
+        
+        # Create the zip file
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_path, arcname in files_to_zip:
+                try:
+                    zipf.write(file_path, arcname)
+                    file_size = os.path.getsize(file_path)
+                    html_report_logger.info(f"Added to zip: {arcname} ({file_size} bytes)")
+                except Exception as e:
+                    html_report_logger.error(f"Failed to add file {file_path} to zip: {e}")
+                    continue
+        
+        # Verify the zip file was created and has content
+        if os.path.exists(zip_filename):
+            zip_size = os.path.getsize(zip_filename)
+            html_report_logger.info(f"Successfully created zip file: {zip_filename} (Size: {zip_size} bytes)")
+            
+            # Verify zip file integrity
+            try:
+                with zipfile.ZipFile(zip_filename, 'r') as zipf:
+                    zip_contents = zipf.namelist()
+                    html_report_logger.info(f"Zip file contains {len(zip_contents)} files: {zip_contents}")
+                return True
+            except zipfile.BadZipFile:
+                html_report_logger.error(f"Created zip file is corrupted: {zip_filename}")
+                return False
+        else:
+            html_report_logger.error(f"Zip file was not created: {zip_filename}")
+            return False
+        
+    except Exception as e:
+        html_report_logger.error(f"Failed to create zip file {zip_filename}: {e}")
+        return False
+
+def upload_report_to_cloud(zip_file_path, system_id):
+    """
+    Uploads the report zip file to the cloud using the CubiView API.
+    
+    Args:
+        zip_file_path (str): Path to the zip file to upload
+        system_id (str): System ID for the device
+    
+    Returns:
+        dict: Response with status and message
+    """
+    try:
+        html_report_logger.info(f"Uploading report to cloud: {zip_file_path}")
+        
+        if not os.path.exists(zip_file_path):
+            error_msg = f"Zip file not found: {zip_file_path}"
+            html_report_logger.error(error_msg)
+            return {"success": False, "message": error_msg}
+        
+        # Verify the file is actually a zip file
+        zip_size = os.path.getsize(zip_file_path)
+        html_report_logger.info(f"Zip file size: {zip_size} bytes")
+        
+        try:
+            with zipfile.ZipFile(zip_file_path, 'r') as zipf:
+                file_list = zipf.namelist()
+                html_report_logger.info(f"Zip file verification successful. Contains {len(file_list)} files: {file_list[:5]}{'...' if len(file_list) > 5 else ''}")
+        except zipfile.BadZipFile:
+            error_msg = f"File is not a valid zip file: {zip_file_path}"
+            html_report_logger.error(error_msg)
+            return {"success": False, "message": error_msg}
+        
+        upload_url = "https://cubiview.onrender.com/api/device/report"
+        
+        # Prepare the files and data for upload with proper headers
+        with open(zip_file_path, 'rb') as zip_file:
+            # Read the file content to verify it's not empty
+            zip_content = zip_file.read()
+            if len(zip_content) == 0:
+                error_msg = f"Zip file is empty: {zip_file_path}"
+                html_report_logger.error(error_msg)
+                return {"success": False, "message": error_msg}
+            
+            # Reset file pointer for upload
+            zip_file.seek(0)
+            
+            # Use proper filename with timestamp for uniqueness
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"CubiView_Report_{system_id}_{timestamp}.zip"
+            
+            files = {
+                'reportZip': (filename, zip_file, 'application/zip')
+            }
+            data = {
+                'systemId': system_id
+            }
+            
+            # Add proper headers
+            headers = {
+                'User-Agent': 'CubiView-Client/1.0',
+                'Accept': 'application/json'
+            }
+            
+            html_report_logger.info(f"Uploading to {upload_url} with systemId: {system_id}")
+            html_report_logger.info(f"Upload filename: {filename}")
+            html_report_logger.info(f"Upload data size: {len(zip_content)} bytes")
+            
+            # Upload with timeout
+            response = requests.post(
+                upload_url,
+                files=files,
+                data=data,
+                headers=headers,
+                timeout=120  # 2 minute timeout for large files
+            )
+            
+            html_report_logger.info(f"Upload response status: {response.status_code}")
+            html_report_logger.info(f"Upload response headers: {dict(response.headers)}")
+            
+            if response.status_code == 200:
+                try:
+                    response_data = response.json()
+                    html_report_logger.info(f"Upload successful: {response_data}")
+                    return {
+                        "success": True, 
+                        "message": "Report uploaded successfully to cloud",
+                        "response": response_data
+                    }
+                except json.JSONDecodeError:
+                    html_report_logger.info("Upload successful (non-JSON response)")
+                    html_report_logger.info(f"Response text: {response.text[:500]}...")
+                    return {
+                        "success": True, 
+                        "message": "Report uploaded successfully to cloud",
+                        "response": response.text
+                    }
+            else:
+                error_msg = f"Upload failed with status {response.status_code}: {response.text}"
+                html_report_logger.error(error_msg)
+                return {"success": False, "message": error_msg}
+                
+    except requests.exceptions.Timeout:
+        error_msg = "Upload timeout: Request to cloud server timed out"
+        html_report_logger.error(error_msg)
+        return {"success": False, "message": error_msg}
+    except requests.exceptions.ConnectionError:
+        error_msg = "Upload connection error: Could not connect to cloud server"
+        html_report_logger.error(error_msg)
+        return {"success": False, "message": error_msg}
+    except Exception as e:
+        error_msg = f"Unexpected error during upload: {e}"
+        html_report_logger.exception(error_msg)
+        return {"success": False, "message": error_msg}
+
 def main_html_report():
     """
     Main function to orchestrate the generation of the daily HTML report.
     Resets global report data, creates necessary directories, parses reports,
-    generates charts, and finally generates the HTML report.
+    generates charts, generates the HTML report, creates zip file, and uploads to cloud.
     Returns a dictionary with status, report path, report date, and a new 'has_data' flag.
     """
     global application_data, browser_data, active_time, idle_time # Ensure active_time and idle_time are globally accessible for parse_reports
@@ -516,6 +720,9 @@ def main_html_report():
     app_bar_path = os.path.join(report_dir_for_today, "app_bar.png")
     browser_bar_path = os.path.join(report_dir_for_today, "browser_bar.png")
     pie_chart_path = os.path.join(report_dir_for_today, "active_idle_pie.png")
+    
+    # Zip file path
+    zip_file_path = os.path.join(report_dir_for_today, f"CubiView_Report_{date_str}.zip")
 
     try:
         os.makedirs(report_dir_for_today, exist_ok=True)
@@ -527,7 +734,9 @@ def main_html_report():
             "message": f"Failed to create report directory: {e}",
             "html_path": None,
             "report_date": date_str,
-            "has_data": False
+            "has_data": False,
+            "zip_path": None,
+            "cloud_upload": {"success": False, "message": "Report directory creation failed"}
         }
 
     try:
@@ -544,7 +753,9 @@ def main_html_report():
             "message": f"Failed to parse reports: {e}",
             "html_path": None,
             "report_date": date_str,
-            "has_data": False
+            "has_data": False,
+            "zip_path": None,
+            "cloud_upload": {"success": False, "message": "Report parsing failed"}
         }
 
     # Determine if any meaningful data was found
@@ -559,12 +770,41 @@ def main_html_report():
 
         generate_html_report(report_dir_for_today, output_html_for_today, app_bar_path, browser_bar_path, pie_chart_path)
 
+        # Create zip file containing all report files
+        html_report_logger.info("Starting zip file creation and cloud upload process...")
+        
+        # Ensure zip file doesn't already exist to avoid conflicts
+        if os.path.exists(zip_file_path):
+            try:
+                os.remove(zip_file_path)
+                html_report_logger.info(f"Removed existing zip file: {zip_file_path}")
+            except Exception as e:
+                html_report_logger.warning(f"Could not remove existing zip file: {e}")
+        
+        zip_success = create_report_zip(report_dir_for_today, zip_file_path)
+        
+        # Upload to cloud if zip creation was successful
+        cloud_upload_result = {"success": False, "message": "Zip creation failed"}
+        if zip_success:
+            try:
+                system_id = get_system_id()
+                html_report_logger.info(f"Uploading report with system ID: {system_id}")
+                cloud_upload_result = upload_report_to_cloud(zip_file_path, system_id)
+                html_report_logger.info(f"Cloud upload result: {cloud_upload_result}")
+            except Exception as e:
+                cloud_upload_result = {"success": False, "message": f"Cloud upload error: {e}"}
+                html_report_logger.error(f"Cloud upload failed: {e}")
+        else:
+            html_report_logger.error("Zip file creation failed, skipping cloud upload")
+
         return {
             "status": "success",
             "message": "Report generation process completed.",
             "html_path": output_html_for_today,
             "report_date": date_str,
-            "has_data": has_data
+            "has_data": has_data,
+            "zip_path": zip_file_path if zip_success else None,
+            "cloud_upload": cloud_upload_result
         }
     except Exception as e:
         print(f"[ERROR] Failed to generate charts or HTML report: {e}")
@@ -573,7 +813,9 @@ def main_html_report():
             "message": f"Failed to generate charts or HTML report: {e}",
             "html_path": None,
             "report_date": date_str,
-            "has_data": False
+            "has_data": False,
+            "zip_path": None,
+            "cloud_upload": {"success": False, "message": "Chart/HTML generation failed"}
         }
 
 def refresh_html_report():
@@ -588,12 +830,20 @@ def refresh_html_report():
 
     if result.get("status") == "success" and os.path.exists(result.get("html_path", "")):
         print(f"[DEBUG] HTML report refreshed successfully. Path: {result['html_path']}")
+        if result.get("zip_path") and os.path.exists(result["zip_path"]):
+            print(f"[DEBUG] Zip file created successfully. Path: {result['zip_path']}")
+        if result.get("cloud_upload", {}).get("success"):
+            print(f"[DEBUG] Report uploaded to cloud successfully.")
+        else:
+            print(f"[DEBUG] Cloud upload status: {result.get('cloud_upload', {}).get('message', 'Unknown')}")
         return {
             "status": "success",
             "message": "Report loaded successfully.",
             "html_path": result['html_path'],
             "report_date": result['report_date'],
-            "has_data": result['has_data']
+            "has_data": result['has_data'],
+            "zip_path": result.get('zip_path'),
+            "cloud_upload": result.get('cloud_upload', {"success": False, "message": "Not attempted"})
         }
     else:
         print(f"[ERROR] Failed to refresh HTML report. Reason: {result.get('message', 'Unknown error.')}")
@@ -602,7 +852,9 @@ def refresh_html_report():
             "message": result.get("message", "Report file not found or could not be generated."),
             "html_path": None,
             "report_date": datetime.now().strftime("%d-%m-%Y"),
-            "has_data": False
+            "has_data": False,
+            "zip_path": None,
+            "cloud_upload": {"success": False, "message": "Report generation failed"}
         }
 
 # Example usage (for testing)
