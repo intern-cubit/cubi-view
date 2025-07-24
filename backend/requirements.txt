@@ -1,0 +1,17 @@
+requests
+flask
+flask_cors
+wmi
+psutil
+matplotlib
+numpy
+watchdog
+pynput
+pywin32
+Pillow
+pyperclip
+opencv-python
+pyaudio
+keyboard
+pytz
+schedule
