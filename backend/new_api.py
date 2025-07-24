@@ -522,6 +522,86 @@ def api_upload_report_to_cloud():
         app_logger.exception(f"API: Error during manual cloud upload: {e}")
         return jsonify({"success": False, "message": f"Upload error: {str(e)}"}), 500
 
+# === SEND REPORT TO SMTP CONFIGURED EMAILS ===
+@app.route('/api/reports/send-to-smtp-emails', methods=['POST'])
+def api_send_report_to_smtp_emails():
+    """Send the latest report zip file to all configured emails in SMTP config"""
+    app_logger.info("API: Received request to send report to SMTP configured emails...")
+    try:
+        # Get SMTP configuration
+        smtp_config = get_smtp_credentials_file()
+        if not smtp_config or not smtp_config.get('from_email') or not smtp_config.get('password'):
+            app_logger.warning("API: SMTP credentials not configured for sending email.")
+            return jsonify({"success": False, "message": "SMTP credentials not configured. Please set them up in SMTP Config page."}), 400
+
+        # Get the latest report information
+        date_str = datetime.now().strftime("%d-%m-%Y")
+        report_dir_for_today = os.path.join(REPORT_DIR, date_str)
+        # Create email-specific zip file (lighter, no screenshots/recordings)
+        email_zip_file_path = os.path.join(report_dir_for_today, f"CubiView_Report_Email_{date_str}.zip")
+        
+        # Check if email zip file exists, if not create it
+        if not os.path.exists(email_zip_file_path):
+            if not os.path.exists(report_dir_for_today):
+                app_logger.error("API: Report directory not found for email send")
+                return jsonify({"success": False, "message": "No report found for today"}), 404
+            
+            # Import the email-optimized zip function from html_report
+            from html_report import create_email_report_zip
+            if not create_email_report_zip(report_dir_for_today, email_zip_file_path):
+                app_logger.error("API: Failed to create email zip file for email send")
+                return jsonify({"success": False, "message": "Failed to create email zip file"}), 500
+
+        # Prepare recipient list
+        recipient_email = smtp_config.get('to_email', '')
+        cc1 = smtp_config.get('cc1', '')
+        cc2 = smtp_config.get('cc2', '')
+        cc_list = [email for email in [cc1, cc2] if email]
+
+        if not recipient_email:
+            app_logger.warning("API: No recipient email configured in SMTP settings.")
+            return jsonify({"success": False, "message": "No recipient email configured in SMTP settings."}), 400
+
+        # Send email with email-optimized zip attachment
+        success, message = send_email_with_zip(
+            from_addr=smtp_config.get('from_email'),
+            password=smtp_config.get('password'),
+            to_addr=recipient_email,
+            subject=f"CubiView Daily Report - {date_str}",
+            body=f"Dear Team,\n\nPlease find attached the CubiView daily report for {date_str}.\n\nThis email contains a lightweight report with:\n- HTML summary report\n- Activity tracking charts and data\n- Application and browser usage reports\n- Key monitoring statistics\n\nNote: This email version excludes screenshots and recordings for faster delivery. Full reports with media files are available through the cloud dashboard.\n\nBest regards,\nCubiView Monitoring System",
+            attachment_path=email_zip_file_path,
+            cc_list=cc_list,
+            smtp_server_add=smtp_config.get('smtp_server'),
+            smtp_port_add=int(smtp_config.get('smtp_port', 465))
+        )
+
+        if success:
+            recipients_str = recipient_email
+            if cc_list:
+                recipients_str += f" and CC: {', '.join(cc_list)}"
+            
+            # Get zip file size for confirmation
+            zip_size = os.path.getsize(email_zip_file_path) if os.path.exists(email_zip_file_path) else 0
+            zip_size_mb = zip_size / (1024 * 1024)
+            
+            app_logger.info(f"API: Email report sent successfully to {recipients_str} (zip size: {zip_size_mb:.2f} MB)")
+            return jsonify({
+                "success": True, 
+                "message": f"Lightweight report sent successfully to {recipients_str} (Size: {zip_size_mb:.2f} MB)",
+                "recipients": {
+                    "to": recipient_email,
+                    "cc": cc_list
+                },
+                "zip_size_mb": round(zip_size_mb, 2)
+            }), 200
+        else:
+            app_logger.error(f"API: Failed to send report email: {message}")
+            return jsonify({"success": False, "message": f"Failed to send email: {message}"}), 500
+            
+    except Exception as e:
+        app_logger.exception(f"API: Error during report email send: {e}")
+        return jsonify({"success": False, "message": f"Email send error: {str(e)}"}), 500
+
 # === WEBSITE WHITELIST ===
 @app.route('/api/whitelist', methods=['GET'])
 def api_get_whitelist():

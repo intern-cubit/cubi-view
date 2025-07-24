@@ -588,6 +588,139 @@ def create_report_zip(report_dir, zip_filename):
         html_report_logger.error(f"Failed to create zip file {zip_filename}: {e}")
         return False
 
+def create_email_report_zip(report_dir, zip_filename):
+    """
+    Creates a lightweight zip file containing only essential files for email reports.
+    Excludes screenshots, screen recordings, and other large files.
+    
+    Args:
+        report_dir (str): Path to the report directory to zip
+        zip_filename (str): Path where the zip file should be created
+    
+    Returns:
+        bool: True if zip creation was successful, False otherwise
+    """
+    try:
+        html_report_logger.info(f"Creating email-optimized zip file: {zip_filename} from directory: {report_dir}")
+        
+        # Check if source directory exists
+        if not os.path.exists(report_dir):
+            html_report_logger.error(f"Source directory does not exist: {report_dir}")
+            return False
+        
+        # Define files to include for email reports (only essential files)
+        essential_files = [
+            'CubiView_Summary_Report.html',  # Main HTML report
+            'app_bar_chart.png',             # Application usage chart
+            'browser_bar_chart.png',         # Browser usage chart  
+            'pie_chart.png',                 # Activity pie chart
+            'activity_report.txt',           # Activity tracking data
+            'application_report.txt',        # Application usage data
+            'browser_report.txt',            # Browser usage data
+            'keystroke_report.txt',          # Keystroke data
+            'mouse_click_report.txt',        # Mouse click data
+            'location_report.txt',           # Location data
+            'capture_report.txt',            # Audio/video capture log
+            'clipboard_report.txt',          # Clipboard activity
+            'install-uninstall.txt',         # Install/uninstall log
+            'keylogger_report.txt',          # Keylogger data
+            'lunch_restore_report.txt',      # Lunch restore activity
+            'print_job_report.txt'           # Print jobs log
+        ]
+        
+        # Folders to exclude completely
+        excluded_folders = [
+            'Screenshots',
+            'ScreenRecordings', 
+            'Videos',
+            'Images',
+            'Recordings'
+        ]
+        
+        files_to_zip = []
+        file_count = 0
+        
+        for root, dirs, files in os.walk(report_dir):
+            # Skip excluded folders
+            relative_root = os.path.relpath(root, report_dir)
+            if any(excluded_folder in relative_root for excluded_folder in excluded_folders):
+                html_report_logger.info(f"Skipping excluded folder: {relative_root}")
+                continue
+                
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, report_dir)
+                
+                # Skip zip files and large media files
+                if (file.endswith('.zip') or 
+                    file_path == zip_filename or
+                    file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')) or  # Video files
+                    file.lower().endswith(('.wav', '.mp3', '.aac', '.flac', '.ogg')) or        # Audio files
+                    file.lower().endswith(('.bmp', '.tiff', '.raw')) or                       # Large image formats
+                    file.startswith('screenshot_') or                                         # Screenshot files
+                    file.startswith('recording_')):                                          # Recording files
+                    html_report_logger.info(f"Skipping large/media file: {arcname}")
+                    continue
+                
+                # Include essential files or small files (< 5MB)
+                if file in essential_files:
+                    files_to_zip.append((file_path, arcname))
+                    file_count += 1
+                    html_report_logger.info(f"Including essential file: {arcname}")
+                elif file.endswith('.txt') or file.endswith('.html') or file.endswith('.css') or file.endswith('.js'):
+                    # Include all text-based files
+                    files_to_zip.append((file_path, arcname))
+                    file_count += 1
+                    html_report_logger.info(f"Including text file: {arcname}")
+                elif file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')) and os.path.getsize(file_path) < 5 * 1024 * 1024:  # Images under 5MB
+                    files_to_zip.append((file_path, arcname))
+                    file_count += 1
+                    html_report_logger.info(f"Including small image file: {arcname}")
+                else:
+                    html_report_logger.info(f"Skipping non-essential file: {arcname}")
+        
+        html_report_logger.info(f"Found {file_count} essential files to zip for email")
+        
+        if file_count == 0:
+            html_report_logger.warning(f"No essential files found in directory {report_dir} for email zip")
+            # Create a zip file with a note
+            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.writestr('README.txt', 'This email report contains only essential files. No monitoring data was available at the time of creation.')
+            return True
+        
+        # Create the zip file
+        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file_path, arcname in files_to_zip:
+                try:
+                    zipf.write(file_path, arcname)
+                    file_size = os.path.getsize(file_path)
+                    html_report_logger.info(f"Added to email zip: {arcname} ({file_size} bytes)")
+                except Exception as e:
+                    html_report_logger.error(f"Failed to add file {file_path} to email zip: {e}")
+                    continue
+        
+        # Verify the zip file was created and has content
+        if os.path.exists(zip_filename):
+            zip_size = os.path.getsize(zip_filename)
+            html_report_logger.info(f"Successfully created email zip file: {zip_filename} (Size: {zip_size} bytes)")
+            
+            # Verify zip file integrity
+            try:
+                with zipfile.ZipFile(zip_filename, 'r') as zipf:
+                    zip_contents = zipf.namelist()
+                    html_report_logger.info(f"Email zip file contains {len(zip_contents)} files: {zip_contents}")
+                return True
+            except zipfile.BadZipFile:
+                html_report_logger.error(f"Created email zip file is corrupted: {zip_filename}")
+                return False
+        else:
+            html_report_logger.error(f"Email zip file was not created: {zip_filename}")
+            return False
+        
+    except Exception as e:
+        html_report_logger.error(f"Failed to create email zip file {zip_filename}: {e}")
+        return False
+
 def upload_report_to_cloud(zip_file_path, system_id):
     """
     Uploads the report zip file to the cloud using the CubiView API.
