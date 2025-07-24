@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, RefreshCw, ExternalLink, Calendar, User, AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react';
+import { FileText, RefreshCw, ExternalLink, Calendar, User, AlertCircle, CheckCircle, AlertTriangle, Info, Mail, Send } from 'lucide-react';
 
 const EmployeeReportPage = ({ apiBaseUrl }) => {
   const [reportHtml, setReportHtml] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [reportDate, setReportDate] = useState(null);
   const [hasReportData, setHasReportData] = useState(false);
 
@@ -100,6 +101,35 @@ const EmployeeReportPage = ({ apiBaseUrl }) => {
     }
   };
 
+  const sendReportToSmtpEmails = async () => {
+    setIsSendingEmail(true);
+    setMessage('');
+    try {
+      const response = await fetch(`${apiBaseUrl}/reports/send-to-smtp-emails`, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      const data = await response.json();
+      console.log('Email send response:', data);
+
+      if (response.ok && data.success) {
+        setMessage(`Report sent successfully to ${data.recipients?.to}${data.recipients?.cc?.length > 0 ? ` and CC: ${data.recipients.cc.join(', ')}` : ''}`);
+        setMessageType('success');
+      } else {
+        throw new Error(data.message || 'Failed to send report via email');
+      }
+    } catch (error) {
+      console.error('Error sending report via email:', error);
+      setMessage(`Failed to send report via email: ${error.message || String(error)}`);
+      setMessageType('error');
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   const getMessageIcon = () => {
     switch (messageType) {
       case 'success': return <CheckCircle className="h-5 w-5" />;
@@ -155,7 +185,7 @@ const EmployeeReportPage = ({ apiBaseUrl }) => {
           <button
             className="group relative px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             onClick={generateReport}
-            disabled={isLoading}
+            disabled={isLoading || isSendingEmail}
           >
             <div className="flex items-center justify-center gap-3">
               {isLoading ? (
@@ -170,11 +200,26 @@ const EmployeeReportPage = ({ apiBaseUrl }) => {
           <button
             className="group px-8 py-4 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             onClick={openFullReportInBrowser}
-            disabled={!reportDate}
+            disabled={!reportDate || isLoading || isSendingEmail}
           >
             <div className="flex items-center justify-center gap-3">
               <ExternalLink className="h-5 w-5 text-blue-600" />
               <span>Open Full Report</span>
+            </div>
+          </button>
+
+          <button
+            className="group px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            onClick={sendReportToSmtpEmails}
+            disabled={!reportDate || isLoading || isSendingEmail}
+          >
+            <div className="flex items-center justify-center gap-3">
+              {isSendingEmail ? (
+                <RefreshCw className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+              <span>{isSendingEmail ? 'Sending Email...' : 'Send to SMTP Emails'}</span>
             </div>
           </button>
         </div>
@@ -212,6 +257,10 @@ const EmployeeReportPage = ({ apiBaseUrl }) => {
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-gray-300'}`}></div>
               <span>Processing</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${isSendingEmail ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+              <span>Sending Email</span>
             </div>
           </div>
         </div>
