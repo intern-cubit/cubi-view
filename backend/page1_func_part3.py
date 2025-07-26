@@ -173,11 +173,11 @@ def disable_video_capture():
     print("Video capture scheduler disabled.")
 
 # Example usage with your schedule function (for reference)
-if __name__ == "__main__":
-    # Simulate your schedule function calling enable/disable
-    print("Simulating schedule function...")
-    enable_audio_capture()
-    enable_video_capture()
-    time.sleep(20)  # Wait for the first capture to complete and observe
-    disable_audio_capture()
-    disable_video_capture()
+#if __name__ == "__main__":
+#    # Simulate your schedule function calling enable/disable
+#    print("Simulating schedule function...")
+#    enable_audio_capture()
+#    enable_video_capture()
+#    time.sleep(20)  # Wait for the first capture to complete and observe
+#    disable_audio_capture()
+#    disable_video_capture()
