@@ -135,22 +135,32 @@ class KeystrokeCounter:
         )
 
 
-
+import getpass
 
 # ==================== Screenshot Capture ====================
 class ScreenshotCapture:
-    date_folder = datetime.datetime.now().strftime("%d-%m-%Y")
-    screenshot_dir = os.path.join(REPORT_DIR, date_folder+"\\Screenshots")
-    if not os.path.exists(screenshot_dir):
-        os.makedirs(screenshot_dir, exist_ok=True)
+    # date_folder = datetime.datetime.now().strftime("%d-%m-%Y")
+    # screenshot_dir = os.path.join(REPORT_DIR, date_folder+"\\Screenshots")
+    # if not os.path.exists(screenshot_dir):
+    #     os.makedirs(screenshot_dir, exist_ok=True)
 
     def __init__(self):
         pass
 
+    def get_screenshot_dir(self):
+        current_date = datetime.datetime.now().strftime("%d-%m-%Y")
+        current_user = getpass.getuser()
+        screenshot_dir = os.path.join(REPORT_DIR, current_date, current_user, "Screenshots")
+        os.makedirs(screenshot_dir, exist_ok=True)
+        return screenshot_dir
+
     def take_screenshot(self, reason, title=""):
+        screenshot_dir = self.get_screenshot_dir()
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '_')).rstrip()
-        filename = os.path.join(ScreenshotCapture.screenshot_dir, f"{reason}{safe_title}{timestamp}.png")
+        # filename = os.path.join(ScreenshotCapture.screenshot_dir, f"{reason}{safe_title}{timestamp}.png")
+        filename = os.path.join(screenshot_dir, f"{reason}{safe_title}{timestamp}.png")
+
         try:
             img = ImageGrab.grab()
             img.save(filename)
@@ -158,9 +168,9 @@ class ScreenshotCapture:
         except Exception as e:
             print(f"[!] Screenshot failed: {e}")
 
-
     def generate_report(self):
-        total_screenshots = len(os.listdir(ScreenshotCapture.screenshot_dir))
+        screenshot_dir = self.get_screenshot_dir()
+        total_screenshots = len(os.listdir(screenshot_dir()))
         content = f"Total screenshots taken: {total_screenshots}"
         write_report(
             directory=REPORT_DIR,
@@ -503,3 +513,9 @@ def disable_clipboard_monitoring():
     print("[-] Clipboard monitoring stopped.")
 
 
+#if __name__ == "__main__":
+#    # Simulate your schedule function calling enable/disable
+#    print("Simulating schedule function...")
+#    enable_screenshot_capture()
+#    time.sleep(20)  # Wait for the first capture to complete and observe
+#    disable_screenshot_capture()
