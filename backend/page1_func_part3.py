@@ -5,6 +5,7 @@ import threading
 import time
 import os
 from datetime import datetime
+import getpass
 from credentials import REPORT_DIR
 from write_report import write_report
 
@@ -15,8 +16,9 @@ AUDIO_RATE = 44100  # Audio sample rate
 AUDIO_CHANNELS = 2  # Stereo
 AUDIO_FORMAT = pyaudio.paInt16  # 16-bit audio
 
+user = getpass.getuser()
 date_folder = datetime.now().strftime("%d-%m-%Y")
-OUTPUT_FOLDER = os.path.join(REPORT_DIR, date_folder + "\\captured_clips")
+OUTPUT_FOLDER = os.path.join(REPORT_DIR, date_folder, user + "\\captured_clips")
 if not os.path.exists(OUTPUT_FOLDER):
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
@@ -171,11 +173,11 @@ def disable_video_capture():
     print("Video capture scheduler disabled.")
 
 # Example usage with your schedule function (for reference)
-if __name__ == "__main__":
-    # Simulate your schedule function calling enable/disable
-    print("Simulating schedule function...")
-    enable_audio_capture()
-    enable_video_capture()
-    time.sleep(20)  # Wait for the first capture to complete and observe
-    disable_audio_capture()
-    disable_video_capture()
+#if __name__ == "__main__":
+#    # Simulate your schedule function calling enable/disable
+#    print("Simulating schedule function...")
+#    enable_audio_capture()
+#    enable_video_capture()
+#    time.sleep(20)  # Wait for the first capture to complete and observe
+#    disable_audio_capture()
+#    disable_video_capture()
