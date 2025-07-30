@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     reloadApp: () => ipcRenderer.send('reload_app'), // Sends message to reload current window
     quitApp: () => ipcRenderer.send('quit_app'),   // Sends message to quit the application
     showLogoutDialog: () => ipcRenderer.send('show-logout-dialog'),
+    // --- Get app version directly from Electron ---
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 });

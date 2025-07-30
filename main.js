@@ -45,7 +45,7 @@ const BACKEND_SHUTDOWN_URL = `http://localhost:${BACKEND_PORT}/shutdown`;
 
 log.transports.file.level = "info";
 autoUpdater.logger = log;
-autoUpdater.autoDownload = true;
+autoUpdater.autoDownload = false; // Disable auto-download, let user control it
 
 autoUpdater.on("checking-for-update", () => {
     log.info("Checking for update...");
@@ -109,6 +109,17 @@ autoUpdater.on("error", (err) => {
 ipcMain.on("restart_app", () => {
     log.info("Restarting app to install update...");
     autoUpdater.quitAndInstall();
+});
+
+// --- Handle manual update download ---
+ipcMain.on("download_update", () => {
+    log.info("Manual update download requested by user...");
+    autoUpdater.downloadUpdate();
+});
+
+// --- Get app version directly from Electron ---
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
 });
 
 // --- NEW IPC LISTENERS ---
@@ -421,7 +432,7 @@ if (!gotTheLock) {
         pollBackendReady(() => {
             createWindow();
             setTimeout(() => {
-                autoUpdater.checkForUpdatesAndNotify();
+                autoUpdater.checkForUpdates(); // Check for updates but don't auto-download
             }, 5000);
         });
 

@@ -204,7 +204,7 @@ const SmtpConfigPage = ({ apiBaseUrl }) => {
                   <span>
                     <strong>Important:</strong> For Gmail/Outlook, use an{' '}
                     <a
-                      href="https://support.google.com/accounts/answer/185833?hl=en"
+                      href="https://myaccount.google.com/apppasswords"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-amber-600 hover:underline font-medium"
