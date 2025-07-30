@@ -65,10 +65,11 @@ def write_report(directory: str,
 
 def zip_folder():
     # Step 1: Build today's dated folder path
+    user = getpass.getuser()
     today_str = datetime.now().strftime("%d-%m-%Y")
-    folder_path = os.path.join(REPORT_DIR, today_str)
+    folder_path = os.path.join(REPORT_DIR, today_str, user)
     screenshots_folder = os.path.join(folder_path, "Screenshots")
-    pdf_path = os.path.join(folder_path, "Screenshots.pdf")
+    pdf_path = os.path.join(screenshots_folder, "Screenshots.pdf")
     zip_path = folder_path + ".zip"
 
     if not os.path.exists(folder_path):
@@ -108,7 +109,7 @@ def zip_folder():
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
             for root, _, files in os.walk(folder_path):
                 # Skip the Screenshots folder
-                if "Screenshots" in os.path.relpath(root, folder_path):
+                if any(excluded in os.path.relpath(root, folder_path) for excluded in ["Screenshots", "captured_clips"]):
                     continue
                 for file in files:
                     file_path = os.path.join(root, file)
