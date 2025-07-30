@@ -23,26 +23,23 @@ function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [currentPage, setCurrentPage] = useState('welcome');
     const [userInfo, setUserInfo] = useState(null);
-    const [systemInfo, setSystemInfo] = useState({ system_id: 'Loading...', local_version: 'Loading...', activation_key: 'Loading...' });
+    const [systemInfo, setSystemInfo] = useState({ system_id: 'Loading...', activation_key: 'Loading...' });
 
-    // Fetch system info, version, and activation key on component mount
+    // Fetch system info and activation key on component mount
     useEffect(() => {
         const fetchAppInfo = async () => {
             try {
-                const [systemRes, localVersionRes, activationRes] = await Promise.all([
+                const [systemRes, activationRes] = await Promise.all([
                     fetch(`${API_BASE_URL}/system`),
-                    fetch(`${API_BASE_URL}/version/local`),
                     fetch(`${API_BASE_URL}/activation`)
                 ]);
 
                 const systemData = await systemRes.json();
                 console.log("System Data:", systemData);
-                const localVersionData = await localVersionRes.json();
                 const activationData = await activationRes.json();
 
                 setSystemInfo({
                     system_id: systemData.system_id,
-                    local_version: localVersionData.local_version,
                     activation_key: activationData.activation_key || '' // Ensure it's not null/undefined
                 });
             } catch (error) {
@@ -50,7 +47,6 @@ function App() {
                 // Set an error state or default values if API calls fail
                 setSystemInfo({
                     system_id: 'N/A',
-                    local_version: 'Error',
                     activation_key: 'Error'
                 });
             }
@@ -298,7 +294,6 @@ function App() {
                     <WelcomePage
                         systemId={systemInfo.system_id}
                         activationKey={systemInfo.activation_key}
-                        localVersion={systemInfo.local_version}
                         userInfo={userInfo}
                         apiBaseUrl={API_BASE_URL}
                     />

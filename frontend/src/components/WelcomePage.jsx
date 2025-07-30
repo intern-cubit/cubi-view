@@ -14,13 +14,37 @@ import {
   Settings
 } from 'lucide-react';
 
-const WelcomePage = ({ systemId, activationKey, localVersion, userInfo, apiBaseUrl }) => {
+const WelcomePage = ({ systemId, activationKey, userInfo, apiBaseUrl }) => {
   const [currentActivationKey, setCurrentActivationKey] = useState(activationKey);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success'); // success, error, warning, info
   const [monitoringStatus, setMonitoringStatus] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [localVersion, setLocalVersion] = useState('Loading...');
+
+  // Get app version from Electron
+  useEffect(() => {
+    const getAppVersion = async () => {
+      try {
+        console.log('Attempting to get app version from Electron...');
+        if (window.electronAPI && window.electronAPI.getAppVersion) {
+          console.log('electronAPI.getAppVersion is available');
+          const version = await window.electronAPI.getAppVersion();
+          console.log('Received version from Electron:', version);
+          setLocalVersion(version || 'Unknown');
+        } else {
+          console.error('electronAPI.getAppVersion is not available');
+          setLocalVersion('Unknown');
+        }
+      } catch (error) {
+        console.error('Error getting app version:', error);
+        setLocalVersion('Error');
+      }
+    };
+    
+    getAppVersion();
+  }, []);
 
   // Sync activation key from props when it's updated (e.g., from App.jsx's initial fetch)
   useEffect(() => {

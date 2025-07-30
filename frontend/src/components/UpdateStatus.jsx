@@ -17,7 +17,7 @@ const UpdateStatus = () => {
             window.electronAPI.onUpdateAvailable((version) => {
                 setUpdateAvailable(true);
                 setNewVersion(version);
-                setUpdateStatus(`Update v${version} available. Click 'Download & Install' to begin.`);
+                setUpdateStatus(`Update v${version} is available! Click 'Download & Install' to begin the update process.`);
             });
 
             window.electronAPI.onUpdateProgress((percent) => {
@@ -28,7 +28,7 @@ const UpdateStatus = () => {
             window.electronAPI.onUpdateDownloaded(() => {
                 setUpdateDownloaded(true);
                 setDownloadStarted(false);
-                setUpdateStatus('Update downloaded. Ready to install.');
+                setUpdateStatus(`Update v${newVersion} downloaded successfully! Click 'Restart & Install' to complete the update.`);
             });
         } else {
             // Only set this status if not in Electron, otherwise it should remain 'Checking for updates...'
@@ -40,7 +40,7 @@ const UpdateStatus = () => {
     const handleDownloadUpdate = () => {
         if (window.electronAPI && updateAvailable) {
             setDownloadStarted(true);
-            setUpdateStatus(`Starting download for v${newVersion}...`);
+            setUpdateStatus(`Downloading update v${newVersion}... Please wait.`);
             window.electronAPI.downloadUpdate();
         }
     };
