@@ -8,6 +8,45 @@ from flask import jsonify, request
 
 # Import the 'app' instance from your api.py
 from new_api import app # This imports the Flask app instance initialized in api.py
+import os
+import json
+
+# Import the constants from your credentials/config file
+from credentials import (
+    APP_DATA_COMMON_DIR,
+    WHITELIST_FILE,
+    BLOCKLIST_FILE,
+    CONFIG_PATH,
+    WHITELIST_JSON,
+    BACKUP_FILE_PATH,
+    SMTP_CREDENTIALS_FILE
+)
+
+# Ensure CubiView data directory exists
+os.makedirs(APP_DATA_COMMON_DIR, exist_ok=True)
+
+# Optional: Ensure subfolders like Reports exist
+from credentials import REPORT_DIR
+os.makedirs(REPORT_DIR, exist_ok=True)
+
+# Create default files if they don't exist
+default_json_files = {
+    WHITELIST_FILE: [],
+    BLOCKLIST_FILE: [],
+    CONFIG_PATH: {},
+    WHITELIST_JSON: [],
+    BACKUP_FILE_PATH: {},
+}
+
+for path, default_content in default_json_files.items():
+    if not os.path.exists(path):
+        with open(path, 'w') as f:
+            json.dump(default_content, f)
+
+# For SMTP credentials (text file), create empty file if needed
+if not os.path.exists(SMTP_CREDENTIALS_FILE):
+    with open(SMTP_CREDENTIALS_FILE, 'w') as f:
+        f.write("")  # or provide default content
 
 # Configure logging for run_server.py
 # This will log to stderr by default, which Electron can capture
