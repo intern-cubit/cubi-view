@@ -57,25 +57,18 @@ def api_toggle_feature():
     if not data or 'features' not in data:
         app_logger.error("API: Invalid request data for toggling features.")
         return jsonify({"success": False, "message": "Invalid request data"}), 400
-    features_to_update = data.get('features', {})
-    app_logger.info(f"API: Toggling features: {features_to_update}")
 
-    current_config = load_config()
+    updated_config = None
+    try:
+        for feature_key, enabled_status in data['features'].items():
+            updated_config = toggle_feature(feature_key, enabled_status)
 
-    for feature_key, enabled_status in features_to_update.items():
-        # Logic for mutually exclusive features
-        if feature_key == "Website Whitelisting" and enabled_status:
-            if current_config.get("Website Blocking"):
-                current_config["Website Blocking"] = False
-        elif feature_key == "Website Blocking" and enabled_status:
-            if current_config.get("Website Whitelisting"):
-                current_config["Website Whitelisting"] = False
+        app_logger.info(f"API: Updated config: {updated_config}")
+        return jsonify({"success": True, "config": updated_config}), 200
 
-        current_config[feature_key] = bool(enabled_status)
-
-    app_logger.info(f"API: Updated config: {current_config}")
-    save_config(current_config)
-    return jsonify({"success": True})
+    except Exception as e:
+        app_logger.error(f"API: Error toggling features: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 # === AUTHENTICATION ===
 @app.route('/api/auth/login', methods=['POST'])
