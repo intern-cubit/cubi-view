@@ -139,7 +139,7 @@ def enable_incognito_blocking(confirmed: bool = False):
     set_firefox_policy(allow=False)
     print("Incognito/Private mode DISABLED for all supported browsers.")
     log_incognito_action("Incognito/Private mode DISABLED for all supported browsers.")
-    restart_browsers()
+    # restart_browsers()
 
 def disable_incognito_blocking(confirmed: bool = False):
     """
@@ -158,7 +158,7 @@ def disable_incognito_blocking(confirmed: bool = False):
     set_firefox_policy(allow=True)
     print("Incognito/Private mode ENABLED for all supported browsers.")
     log_incognito_action("Incognito/Private mode ENABLED for all supported browsers.")
-    restart_browsers()
+    # restart_browsers()
 
 ####################### Block / Unblock Chrome Extensions ################################
 
@@ -176,7 +176,7 @@ def block_extensions(confirmed: bool = False):
     subprocess.run("reg add HKLM\\Software\\Policies\\Google\\Chrome\\ExtensionInstallBlocklist /v 1 /t REG_SZ /d * /f", shell=True)
     log_chrome_ext(f" Blocked all Chrome Extenstions")
     close_browsers()
-    restart_browsers()
+    # restart_browsers()
 
 #Unblock all chrome extensions
 def unblock_extensions(confirmed: bool = False):
@@ -192,7 +192,7 @@ def unblock_extensions(confirmed: bool = False):
     subprocess.run("reg delete HKLM\\Software\\Policies\\Google\\Chrome\\ExtensionInstallBlocklist /f", shell=True)
     log_chrome_ext(f" Unblocked all Chrome Extenstions")
     close_browsers()
-    restart_browsers()
+    # restart_browsers()
 
 
 ##################### Whitelist websites #################
@@ -291,13 +291,13 @@ def generate_website_whitelist_report():
 ############ Block websites ################
 import os
 import json
-import ctypes
 import threading
 
+# REDIRECT_IP = "127.0.0.1"
 HOSTS_PATH = r"C:\Windows\System32\drivers\etc\hosts"
 BLOCK_TAG = "# blocked by Python"
-REDIRECT_IP = "127.0.0.1"
-# BLOCKLIST_FILE = "blocklist_sites.json"
+IPV4_REDIRECT = "127.0.0.1"
+IPV6_REDIRECT = "::1"
 
 
 def load_blocked_sites():
@@ -307,38 +307,141 @@ def load_blocked_sites():
     with open(BLOCKLIST_FILE, 'r') as f:
         try:
             data = json.load(f)
-            return data.get("websites", [])
+            if isinstance(data, dict):
+                return data.get("websites", [])
+            elif isinstance(data, list):
+                return data
+            else:
+                return []
         except json.JSONDecodeError:
             return []
 
 
+import subprocess
+
+def flush_dns():
+    try:
+        subprocess.run(["ipconfig", "/flushdns"], check=True, shell=True)
+        print("[+] DNS cache flushed.")
+    except Exception as e:
+        print("[-] Failed to flush DNS:", e)
+
+from urllib.parse import urlparse
+
+def normalize_sites(sites):
+    """Ensure sites are plain domains (strip scheme, path, etc)."""
+    domains = []
+    for site in sites:
+        parsed = urlparse(site)
+        if parsed.netloc:
+            domains.append(parsed.netloc.lower())
+        else:
+            domains.append(site.lower())
+    return domains
+
+def expand_domains(domains):
+    """Expand each domain into www + IPv4 + IPv6 variants."""
+    expanded = []
+    for domain in domains:
+        base = domain.lstrip("www.")  # avoid double www
+        candidates = {base, f"www.{base}"}
+        for d in candidates:
+            expanded.append(f"{IPV4_REDIRECT} {d} {BLOCK_TAG}\n")
+            expanded.append(f"{IPV6_REDIRECT} {d} {BLOCK_TAG}\n")
+    return expanded
+
+from pathlib import Path
+
+def disable_secure_dns():
+    chrome_prefs_path = Path.home() / "AppData/Local/Google/Chrome/User Data/Default/Preferences"
+    
+    if not chrome_prefs_path.exists():
+        print("[-] Chrome preferences not found.")
+        return
+    
+    try:
+        with open(chrome_prefs_path, "r", encoding="utf-8") as f:
+            prefs = json.load(f)
+        
+        # Navigate safely in case keys are missing
+        prefs.setdefault("dns_over_https", {})
+        prefs["dns_over_https"]["mode"] = "off"
+        
+        with open(chrome_prefs_path, "w", encoding="utf-8") as f:
+            json.dump(prefs, f, indent=2)
+        
+        print("[+] Secure DNS disabled in Chrome. Restart Chrome for changes to apply.")
+    except Exception as e:
+        print("[-] Failed to modify Chrome preferences:", e)
+
+def enable_secure_dns():
+    """Re-enable Secure DNS (DoH) in Chrome by editing Preferences."""
+    chrome_prefs_path = Path.home() / "AppData/Local/Google/Chrome/User Data/Default/Preferences"
+    
+    if not chrome_prefs_path.exists():
+        print("[-] Chrome preferences not found.")
+        return
+    
+    try:
+        with open(chrome_prefs_path, "r", encoding="utf-8") as f:
+            prefs = json.load(f)
+        
+        prefs.setdefault("dns_over_https", {})
+        prefs["dns_over_https"]["mode"] = "automatic"  # restore default / enabled
+        
+        with open(chrome_prefs_path, "w", encoding="utf-8") as f:
+            json.dump(prefs, f, indent=2)
+        
+        print("[+] Secure DNS enabled in Chrome. Restart Chrome for changes to apply.")
+    except Exception as e:
+        print("[-] Failed to enable Secure DNS:", e)
+
+
 def block_sites():
     """Add entries to the hosts file to block specified websites."""
-    sites = load_blocked_sites()
+    sites = normalize_sites(load_blocked_sites())
+    print("Sites to block:", sites)
     if not sites:
+        print("No sites loaded!")
         return
+
+    entries_to_add = expand_domains(sites)
 
     with open(HOSTS_PATH, "r+", encoding="utf-8") as file:
         content = file.read()
-        for site in sites:
-            entry = f"{REDIRECT_IP} {site} {BLOCK_TAG}\n"
-            if site not in content:
+        for entry in entries_to_add:
+            if entry not in content:
+                print("Adding entry:", entry.strip())
+                if not content.endswith("\n"):
+                    file.write("\n")
                 file.write(entry)
-
+        file.flush()
+        os.fsync(file.fileno())
+    close_browsers()
+    flush_dns()
+    disable_secure_dns()
 
 def unblock_sites():
-    """Remove blocked websites entries from the hosts file."""
+    """Remove blocked websites entries (IPv4 + IPv6 + www variants) from the hosts file."""
     if not os.path.exists(HOSTS_PATH):
         return
 
+    # Load sites user had blocked
+    sites = normalize_sites(load_blocked_sites())
+    entries_to_remove = set(expand_domains(sites))
+
     with open(HOSTS_PATH, "r", encoding="utf-8") as file:
         lines = file.readlines()
+
     with open(HOSTS_PATH, "w", encoding="utf-8") as file:
         for line in lines:
-            if BLOCK_TAG not in line:
+            if line not in entries_to_remove:  # keep everything else
                 file.write(line)
 
     generate_blocked_websites_report()
+    close_browsers()
+    flush_dns()
+    enable_secure_dns()
 
 
 def enable_website_blocking():
@@ -353,6 +456,7 @@ def _enable_website_blocking_logic():
 
 def disable_website_blocking():
     unblock_sites()
+    generate_blocked_websites_report()
 
 
 def generate_blocked_websites_report():
@@ -383,3 +487,8 @@ def is_block_active():
     with open(HOSTS_PATH, "r", encoding="utf-8") as file:
         content = file.read()
         return BLOCK_TAG in content
+# import time
+# if __name__ == "__main__":
+#     enable_website_blocking()
+#     time.sleep(60)
+#     disable_website_blocking()
