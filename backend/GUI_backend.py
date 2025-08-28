@@ -44,6 +44,7 @@ def toggle_feature(feature, enabled):
 
     config[feature] = bool(enabled)
     save_config(config)
+    return config
 
 
 # === MONITORING CONTROL ===
