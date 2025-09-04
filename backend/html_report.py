@@ -29,6 +29,7 @@ except Exception as e:
     REPORT_DIR = 'reports'
     CONFIG_PATH = 'config.json'
 
+
 # Import get_system_id for cloud upload
 try:
     from get_systemID import get_system_id
@@ -57,6 +58,16 @@ def extract_value(text, keyword):
     """Extracts an integer value following a keyword from a string."""
     match = re.search(rf"{re.escape(keyword)}\D*(\d+)", text)
     return int(match.group(1)) if match else 0
+
+def extract_number(line):
+    """Extract first integer from a line using regex (handles '635 seconds')."""
+    match = re.search(r"(\d+)", line)
+    return int(match.group(1)) if match else 0
+
+def extract_float(line):
+    """Extract first float from a line (handles '2.08 seconds')."""
+    match = re.search(r"([\d.]+)", line)
+    return float(match.group(1)) if match else 0.0
 
 def parse_reports(current_report_dir):
     """Parses activity, keystroke, and click reports to update global totals."""
@@ -847,7 +858,8 @@ def main_html_report():
 
     # Calculate report directory and file paths for the current date
     date_str = datetime.now().strftime("%d-%m-%Y")
-    report_dir_for_today = os.path.join(REPORT_DIR, date_str)
+    user = os.getlogin()
+    report_dir_for_today = os.path.join(REPORT_DIR, date_str, user)
     output_html_for_today = os.path.join(report_dir_for_today, "CubiView_Summary_Report.html")
 
     app_bar_path = os.path.join(report_dir_for_today, "app_bar.png")
