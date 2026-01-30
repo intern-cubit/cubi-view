@@ -5,6 +5,7 @@ import psutil
 import json
 import os
 import requests
+import sys
 from write_report import send_email_with_zip, load_smtp_credentials
 from get_systemID import get_system_id
 from credentials import (
@@ -54,25 +55,36 @@ def get_startup_folder():
 
 def start_monitoring():
     try:
-        # Start activator.exe
-        subprocess.Popen(["activator.exe"], shell=False)
+        # Check if activator.exe exists
+        if os.path.exists("activator.exe"):
+            subprocess.Popen(["activator.exe"], shell=False, creationflags=0x08000000)
+            
+            # Add activator.exe to startup
+            startup_folder = get_startup_folder()
+            shortcut_path = os.path.join(startup_folder, "Activator.lnk")
+            
+            # Create shortcut using PowerShell
+            activator_path = os.path.abspath("activator.exe")
+            powershell_script = f'''
+            $WshShell = New-Object -ComObject WScript.Shell
+            $Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
+            $Shortcut.TargetPath = "{activator_path}"
+            $Shortcut.WorkingDirectory = "{os.path.dirname(activator_path)}"
+            $Shortcut.Save()
+            '''
+            subprocess.run(["powershell", "-Command", powershell_script], check=True, creationflags=0x08000000)
+            print("Activator added to startup (EXE mode).")
+            
+        elif os.path.exists("activator.py"):
+            # Fallback to running python script directly
+            print("activator.exe not found, starting activator.py with python...")
+            subprocess.Popen([sys.executable, "activator.py"], shell=False, creationflags=0x08000000)
+            print("Activator started (Python Script mode). Startup shortcut skipped for script mode.")
+            
+        else:
+            print("Error: Neither activator.exe nor activator.py found.")
+            return False
 
-        # Add activator.exe to startup
-        startup_folder = get_startup_folder()
-        shortcut_path = os.path.join(startup_folder, "Activator.lnk")
-        
-        # Create shortcut using PowerShell
-        activator_path = os.path.abspath("activator.exe")
-        powershell_script = f'''
-        $WshShell = New-Object -ComObject WScript.Shell
-        $Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
-        $Shortcut.TargetPath = "{activator_path}"
-        $Shortcut.WorkingDirectory = "{os.path.dirname(activator_path)}"
-        $Shortcut.Save()
-        '''
-        subprocess.run(["powershell", "-Command", powershell_script], check=True)
-
-        print("Activator added to startup.")
         return True
     except Exception as e:
         print(f"Error starting monitoring: {e}")
@@ -80,10 +92,19 @@ def start_monitoring():
 
 def stop_monitoring():
     try:
-        # Kill activator.exe
-        for proc in psutil.process_iter(['pid', 'name']):
-            if proc.info['name'] and proc.info['name'].lower() == 'activator.exe':
-                proc.terminate()
+        # Kill activator process
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                # Check for activator.exe
+                if proc.info['name'] and proc.info['name'].lower() == 'activator.exe':
+                    proc.terminate()
+                
+                # Check for python running activator.py
+                elif proc.info['name'] and 'python' in proc.info['name'].lower():
+                    if proc.info['cmdline'] and any('activator.py' in arg for arg in proc.info['cmdline']):
+                        proc.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
 
         # Remove from startup folder
         startup_folder = get_startup_folder()
@@ -98,7 +119,20 @@ def stop_monitoring():
 
 
 def is_monitoring_running():
-    return any(proc.info['name'].lower() == 'activator.exe' for proc in psutil.process_iter(['name']))
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            # Check for activator.exe
+            if proc.info['name'] and proc.info['name'].lower() == 'activator.exe':
+                return True
+            
+            # Check for python running activator.py
+            if proc.info['name'] and 'python' in proc.info['name'].lower():
+                if proc.info['cmdline'] and any('activator.py' in arg for arg in proc.info['cmdline']):
+                    return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+            
+    return False
 
 # === ACTIVATION KEY ===
 def load_activation_key():
@@ -283,8 +317,13 @@ def remove_site(file_path, site):
 def load_whitelisted_installers():
     if os.path.exists(WHITELIST_JSON):
         with open(WHITELIST_JSON, "r") as f:
-            data = json.load(f)
-            return data.get("WHITELISTED_PROCESSES", [])
+            try:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+                return data.get("WHITELISTED_PROCESSES", [])
+            except json.JSONDecodeError:
+                return []
     return []
 
 def add_whitelisted_installer(name):

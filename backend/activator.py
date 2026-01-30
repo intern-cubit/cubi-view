@@ -59,7 +59,7 @@ def run_as_admin():
     params = " ".join([f'"{arg}"' for arg in sys.argv[1:]])
     try:
         ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, f'"{script}" {params}', None, 1
+            None, "runas", sys.executable, f'"{script}" {params}', None, 0
         )
         return False  # Current process exits; elevated one starts
     except Exception as e:

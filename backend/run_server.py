@@ -26,7 +26,7 @@ default_json_files = {
     WHITELIST_FILE: [],
     BLOCKLIST_FILE: [],
     CONFIG_PATH: {},
-    WHITELIST_JSON: [],
+    WHITELIST_JSON: {"WHITELISTED_PROCESSES": []},
     BACKUP_FILE_PATH: {},
 }
 

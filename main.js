@@ -1,5 +1,13 @@
 // main.js
-const { app, BrowserWindow, dialog, ipcMain, session } = require("electron"); // Import session for clearing data
+const {
+    app,
+    BrowserWindow,
+    dialog,
+    ipcMain,
+    session,
+    Tray,
+    Menu,
+} = require("electron"); // Import session for clearing data
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
@@ -20,12 +28,12 @@ function killPort(port) {
                     stderr.includes("not found")
                 ) {
                     console.log(
-                        `[KILLPORT] No process found on port ${port}, proceeding.`
+                        `[KILLPORT] No process found on port ${port}, proceeding.`,
                     );
                     resolve();
                 } else {
                     console.error(
-                        `[KILLPORT] Error killing port ${port}: ${stderr}`
+                        `[KILLPORT] Error killing port ${port}: ${stderr}`,
                     );
                     resolve();
                 }
@@ -39,6 +47,8 @@ function killPort(port) {
 
 let backendProcess;
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 const BACKEND_PORT = 8000;
 const BACKEND_HEALTH_URL = `http://localhost:${BACKEND_PORT}/health`;
 const BACKEND_SHUTDOWN_URL = `http://localhost:${BACKEND_PORT}/shutdown`;
@@ -59,7 +69,7 @@ autoUpdater.on("update-available", (info) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(
             "update-status",
-            `Update available: v${info.version}`
+            `Update available: v${info.version}`,
         );
         mainWindow.webContents.send("update-available", info.version);
     }
@@ -70,7 +80,7 @@ autoUpdater.on("update-not-available", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(
             "update-status",
-            "No new update available."
+            "No new update available.",
         );
     }
 });
@@ -90,7 +100,7 @@ autoUpdater.on("update-downloaded", (info) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(
             "update-status",
-            `Update downloaded: v${info.version}. Click 'Restart & Install' to apply.`
+            `Update downloaded: v${info.version}. Click 'Restart & Install' to apply.`,
         );
         mainWindow.webContents.send("update-downloaded");
     }
@@ -101,7 +111,7 @@ autoUpdater.on("error", (err) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(
             "update-status",
-            `Error during update: ${err.message}`
+            `Error during update: ${err.message}`,
         );
     }
 });
@@ -118,42 +128,43 @@ ipcMain.on("download_update", () => {
 });
 
 // --- Get app version directly from Electron ---
-ipcMain.handle('get-app-version', () => {
+ipcMain.handle("get-app-version", () => {
     return app.getVersion();
 });
 
 // --- NEW IPC LISTENERS ---
-ipcMain.on('reload_app', () => {
+ipcMain.on("reload_app", () => {
     log.info("Received 'reload_app' signal. Reloading current window.");
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.reload(); // Reloads the renderer process
     }
 });
 
-ipcMain.on('quit_app', async (event) => {
+ipcMain.on("quit_app", async (event) => {
     log.info("Received 'quit_app' signal. Showing quit confirmation dialog.");
     const options = {
-        type: 'question',
-        buttons: ['OK', 'Cancel'],
-        defaultId: 0, 
-        title: 'CubiView', 
-        message: 'Are you sure you want to quit the application?',
-        icon: path.join(__dirname, 'build', 'icon.ico')
+        type: "question",
+        buttons: ["OK", "Cancel"],
+        defaultId: 0,
+        title: "CubiView",
+        message: "Are you sure you want to quit the application?",
+        icon: path.join(__dirname, "build", "icon.ico"),
     };
 
     const response = await dialog.showMessageBox(mainWindow, options);
 
-    if (response.response === 0) { // If 'OK' is clicked
+    if (response.response === 0) {
+        // If 'OK' is clicked
         app.quit();
     }
 });
 
 ipcMain.on("show-logout-dialog", async (event) => {
     log.info(
-        "Received 'show-logout-dialog' signal. Showing logout confirmation dialog."
+        "Received 'show-logout-dialog' signal. Showing logout confirmation dialog.",
     );
     const options = {
-        type: "info", 
+        type: "info",
         buttons: ["OK"],
         defaultId: 0,
         title: "CubiView",
@@ -166,8 +177,8 @@ ipcMain.on("show-logout-dialog", async (event) => {
     log.info("Initiating logout and relaunch.");
     try {
         if (session && session.defaultSession) {
-            await session.defaultSession.clearStorageData(); 
-            await session.defaultSession.clearCache(); 
+            await session.defaultSession.clearStorageData();
+            await session.defaultSession.clearCache();
             log.info("Electron session data and cache cleared.");
         } else {
             log.warn("Electron session is not available for clearing data.");
@@ -176,27 +187,29 @@ ipcMain.on("show-logout-dialog", async (event) => {
         log.error("Failed to clear session data:", error);
     }
 
-    app.relaunch(); 
-    app.quit(); 
+    app.relaunch();
+    app.quit();
 });
 
-ipcMain.on('logout-and-relaunch', async (event) => {
-    log.info("Received 'logout-and-relaunch' signal. Clearing data and relaunching.");
+ipcMain.on("logout-and-relaunch", async (event) => {
+    log.info(
+        "Received 'logout-and-relaunch' signal. Clearing data and relaunching.",
+    );
     // Optional: Clear session data before relaunching for a cleaner state
     try {
         if (session && session.defaultSession) {
             await session.defaultSession.clearStorageData(); // Clears local storage, cookies, indexedDB, etc.
             await session.defaultSession.clearCache(); // Clears HTTP cache
-            log.info('Electron session data and cache cleared.');
+            log.info("Electron session data and cache cleared.");
         } else {
-            log.warn('Electron session is not available for clearing data.');
+            log.warn("Electron session is not available for clearing data.");
         }
     } catch (error) {
-        log.error('Failed to clear session data:', error);
+        log.error("Failed to clear session data:", error);
     }
 
     app.relaunch(); // Prepares the app to restart
-    app.quit();     // Quits the current instance, triggering the relaunch
+    app.quit(); // Quits the current instance, triggering the relaunch
 });
 // --- END NEW IPC LISTENERS ---
 
@@ -216,14 +229,14 @@ function startBackend() {
     if (!fs.existsSync(backendExePath)) {
         dialog.showErrorBox(
             "Backend Error",
-            `Backend executable not found at: ${backendExePath}\nPlease ensure you have built your Python backend with PyInstaller and that it's correctly placed by Electron Builder (check 'extraResources' in package.json).`
+            `Backend executable not found at: ${backendExePath}\nPlease ensure you have built your Python backend with PyInstaller and that it's correctly placed by Electron Builder (check 'extraResources' in package.json).`,
         );
         app.quit();
         return;
     }
 
     console.log(
-        `[BACKEND] Attempting to spawn backend from: ${backendExePath}`
+        `[BACKEND] Attempting to spawn backend from: ${backendExePath}`,
     );
     backendProcess = spawn(backendExePath);
 
@@ -240,18 +253,18 @@ function startBackend() {
         if (code !== 0 && code !== null) {
             dialog.showErrorBox(
                 "Backend Crashed",
-                `The backend application exited unexpectedly with code ${code}. Please check console for errors.`
+                `The backend application exited unexpectedly with code ${code}. Please check console for errors.`,
             );
         }
     });
 
     backendProcess.on("error", (err) => {
         console.error(
-            `[BACKEND] Failed to start backend process: ${err.message}`
+            `[BACKEND] Failed to start backend process: ${err.message}`,
         );
         dialog.showErrorBox(
             "Backend Launch Error",
-            `Could not start the backend application. Error: ${err.message}`
+            `Could not start the backend application. Error: ${err.message}`,
         );
         app.quit();
     });
@@ -264,22 +277,23 @@ function pollBackendReady(callback, retries = 30, delay = 1000) {
     const check = () => {
         attempts++;
         console.log(
-            `[BACKEND] Checking backend readiness... Attempt ${attempts}/${retries}`
+            `[BACKEND] Checking backend readiness... Attempt ${attempts}/${retries}`,
         );
         const request = http.get(BACKEND_HEALTH_URL, (res) => {
             if (res.statusCode === 200) {
                 console.log("[BACKEND] Backend is ready!");
+                startMonitoringService();
                 callback();
             } else {
                 console.warn(
-                    `[BACKEND] Backend responded with status ${res.statusCode}. Retrying...`
+                    `[BACKEND] Backend responded with status ${res.statusCode}. Retrying...`,
                 );
                 if (attempts < retries) {
                     setTimeout(check, delay);
                 } else {
                     dialog.showErrorBox(
                         "Backend Timeout",
-                        `Backend did not become ready within the expected time. Please check backend logs. URL: ${BACKEND_HEALTH_URL}`
+                        `Backend did not become ready within the expected time. Please check backend logs. URL: ${BACKEND_HEALTH_URL}`,
                     );
                     app.quit();
                 }
@@ -288,14 +302,14 @@ function pollBackendReady(callback, retries = 30, delay = 1000) {
 
         request.on("error", (err) => {
             console.warn(
-                `[BACKEND] Connection to backend failed: ${err.message}. Retrying...`
+                `[BACKEND] Connection to backend failed: ${err.message}. Retrying...`,
             );
             if (attempts < retries) {
                 setTimeout(check, delay);
             } else {
                 dialog.showErrorBox(
                     "Backend Timeout",
-                    `Could not connect to backend within the expected time. Please ensure the backend is running and accessible at ${BACKEND_HEALTH_URL}. Error: ${err.message}`
+                    `Could not connect to backend within the expected time. Please ensure the backend is running and accessible at ${BACKEND_HEALTH_URL}. Error: ${err.message}`,
                 );
                 app.quit();
             }
@@ -304,6 +318,60 @@ function pollBackendReady(callback, retries = 30, delay = 1000) {
         request.end();
     };
     check();
+}
+
+function createTray() {
+    const iconPath = path.join(__dirname, "build", "icon.ico");
+    tray = new Tray(iconPath);
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: "Open CubiView",
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                } else {
+                    createWindow();
+                }
+            },
+        },
+        {
+            label: "Quit",
+            click: () => {
+                isQuitting = true;
+                app.quit();
+            },
+        },
+    ]);
+    tray.setToolTip("CubiView Monitoring");
+    tray.setContextMenu(contextMenu);
+
+    tray.on("double-click", () => {
+        if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+        } else {
+            createWindow();
+        }
+    });
+}
+
+async function startMonitoringService() {
+    console.log("[MONITORING] Sending auto-start signal to backend...");
+    try {
+        const { default: fetch } = await import("node-fetch");
+        const response = await fetch(
+            `http://localhost:${BACKEND_PORT}/api/start`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            },
+        );
+        const data = await response.json();
+        console.log("[MONITORING] Auto-start response:", data);
+    } catch (error) {
+        console.error("[MONITORING] Failed to auto-start monitoring:", error);
+    }
 }
 
 function createWindow() {
@@ -318,7 +386,7 @@ function createWindow() {
             contextIsolation: true,
         },
         autoHideMenuBar: true,
-        icon: path.join(__dirname, 'build', 'icon.ico') // Set your application icon for the window
+        icon: path.join(__dirname, "build", "icon.ico"), // Set your application icon for the window
     });
 
     const frontendPath = path.join(__dirname, "frontend", "dist", "index.html");
@@ -329,26 +397,30 @@ function createWindow() {
     } else {
         dialog.showErrorBox(
             "Frontend Build Missing",
-            `Frontend build not found at ${frontendPath}. Please run 'npm run build' in your 'frontend/' directory.`
+            `Frontend build not found at ${frontendPath}. Please run 'npm run build' in your 'frontend/' directory.`,
         );
         app.quit();
     }
 
     // Handle zoom keyboard shortcuts
-    mainWindow.webContents.on('before-input-event', (event, input) => {
+    mainWindow.webContents.on("before-input-event", (event, input) => {
         // Debug: Log all Ctrl key combinations for troubleshooting
         if (input.control) {
-            console.log(`[ZOOM DEBUG] Ctrl + ${input.key}, shift: ${input.shift}, alt: ${input.alt}`);
+            console.log(
+                `[ZOOM DEBUG] Ctrl + ${input.key}, shift: ${input.shift}, alt: ${input.alt}`,
+            );
         }
-        
+
         // Zoom in: Multiple key combinations for different keyboards
-        if (input.control && !input.alt && (
-            (input.key === '=' && !input.shift) ||  // Ctrl + = (US keyboard)
-            (input.key === '+' && input.shift) ||   // Ctrl + Shift + = (which produces +)
-            input.key === '+' ||                    // Direct Ctrl + + 
-            input.key === 'plus' ||                 // Some keyboards report as 'plus'
-            input.key === 'Equal'                   // Some systems report as 'Equal'
-        )) {
+        if (
+            input.control &&
+            !input.alt &&
+            ((input.key === "=" && !input.shift) || // Ctrl + = (US keyboard)
+                (input.key === "+" && input.shift) || // Ctrl + Shift + = (which produces +)
+                input.key === "+" || // Direct Ctrl + +
+                input.key === "plus" || // Some keyboards report as 'plus'
+                input.key === "Equal") // Some systems report as 'Equal'
+        ) {
             event.preventDefault();
             const currentZoom = mainWindow.webContents.getZoomFactor();
             const newZoom = Math.min(currentZoom + 0.1, 3.0);
@@ -356,11 +428,13 @@ function createWindow() {
             console.log(`[ZOOM] Zoom in: ${newZoom}`);
         }
         // Zoom out: Ctrl + Minus
-        else if (input.control && !input.alt && (
-            input.key === '-' || 
-            input.key === 'minus' || 
-            input.key === 'Minus'
-        )) {
+        else if (
+            input.control &&
+            !input.alt &&
+            (input.key === "-" ||
+                input.key === "minus" ||
+                input.key === "Minus")
+        ) {
             event.preventDefault();
             const currentZoom = mainWindow.webContents.getZoomFactor();
             const newZoom = Math.max(currentZoom - 0.1, 0.3);
@@ -368,19 +442,28 @@ function createWindow() {
             console.log(`[ZOOM] Zoom out: ${newZoom}`);
         }
         // Reset zoom: Ctrl + 0
-        else if (input.control && !input.alt && (
-            input.key === '0' || 
-            input.key === 'Digit0'
-        )) {
+        else if (
+            input.control &&
+            !input.alt &&
+            (input.key === "0" || input.key === "Digit0")
+        ) {
             event.preventDefault();
             mainWindow.webContents.setZoomFactor(1.0);
             console.log(`[ZOOM] Reset zoom: 1.0`);
         }
     });
 
+    mainWindow.on("close", (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            mainWindow.hide();
+            return false;
+        }
+    });
+
     mainWindow.on("closed", () => {
         console.log(
-            "[MAIN WINDOW] mainWindow was closed, setting reference to null."
+            "[MAIN WINDOW] mainWindow was closed, setting reference to null.",
         );
         mainWindow = null;
     });
@@ -390,18 +473,18 @@ const gotTheLock = app.requestSingleInstanceLock();
 console.log(
     `[APP LIFECYCLE] Single instance lock attempt: ${
         gotTheLock ? "Acquired" : "Failed (another instance detected)"
-    }`
+    }`,
 );
 
 if (!gotTheLock) {
     console.log(
-        "[APP LIFECYCLE] Another instance of the application is already running. Quitting this instance."
+        "[APP LIFECYCLE] Another instance of the application is already running. Quitting this instance.",
     );
     app.quit();
 } else {
     app.on("second-instance", (event, commandLine, workingDirectory) => {
         console.log(
-            "[APP LIFECYCLE] Second instance attempted to launch. Focusing existing window."
+            "[APP LIFECYCLE] Second instance attempted to launch. Focusing existing window.",
         );
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
@@ -417,11 +500,11 @@ if (!gotTheLock) {
             console.log("[APP LIFECYCLE] killPort operation completed.");
         } catch (error) {
             console.error(
-                `[APP LIFECYCLE] Critical error during killPort operation: ${error.message}. Quitting application.`
+                `[APP LIFECYCLE] Critical error during killPort operation: ${error.message}. Quitting application.`,
             );
             dialog.showErrorBox(
                 "Port Cleaning Error",
-                `Could not ensure port ${BACKEND_PORT} is free: ${error.message}. Application will quit.`
+                `Could not ensure port ${BACKEND_PORT} is free: ${error.message}. Application will quit.`,
             );
             app.quit();
             return;
@@ -429,8 +512,11 @@ if (!gotTheLock) {
 
         startBackend();
 
+        startBackend();
+
         pollBackendReady(() => {
             createWindow();
+            createTray();
             setTimeout(() => {
                 autoUpdater.checkForUpdates(); // Check for updates but don't auto-download
             }, 5000);
@@ -439,12 +525,12 @@ if (!gotTheLock) {
         app.on("activate", function () {
             if (BrowserWindow.getAllWindows().length === 0) {
                 console.log(
-                    "[APP LIFECYCLE] Activate event: No windows open, creating one."
+                    "[APP LIFECYCLE] Activate event: No windows open, creating one.",
                 );
                 createWindow();
             } else {
                 console.log(
-                    "[APP LIFECYCLE] Activate event: Windows already open, focusing."
+                    "[APP LIFECYCLE] Activate event: Windows already open, focusing.",
                 );
                 if (mainWindow) {
                     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -465,7 +551,7 @@ app.on("window-all-closed", () => {
 app.on("will-quit", async (event) => {
     event.preventDefault();
     console.log(
-        "[APP LIFECYCLE] 'will-quit' event fired. Initiating backend termination sequence."
+        "[APP LIFECYCLE] 'will-quit' event fired. Initiating backend termination sequence.",
     );
 
     if (backendProcess) {
@@ -477,7 +563,7 @@ app.on("will-quit", async (event) => {
             clearTimeout(killTimeout);
             backendProcess = null;
             console.log(
-                "[APP LIFECYCLE] Backend process reference cleared. Allowing Electron to exit."
+                "[APP LIFECYCLE] Backend process reference cleared. Allowing Electron to exit.",
             );
             app.exit();
         };
@@ -486,12 +572,12 @@ app.on("will-quit", async (event) => {
             try {
                 process.kill(backendProcess.pid, 0);
                 console.log(
-                    "Backend process still running, sending SIGKILL..."
+                    "Backend process still running, sending SIGKILL...",
                 );
                 backendProcess.kill("SIGKILL");
             } catch (e) {
                 console.log(
-                    "Backend process already terminated or does not exist (during force kill check)."
+                    "Backend process already terminated or does not exist (during force kill check).",
                 );
             } finally {
                 cleanupAndExit();
@@ -505,7 +591,7 @@ app.on("will-quit", async (event) => {
 
         backendProcess.once("error", (err) => {
             console.error(
-                `Error with backend process during termination: ${err.message}`
+                `Error with backend process during termination: ${err.message}`,
             );
             cleanupAndExit();
         });
@@ -521,18 +607,18 @@ app.on("will-quit", async (event) => {
 
             if (response.ok) {
                 console.log(
-                    "Backend shutdown endpoint called successfully. Waiting for process to exit..."
+                    "Backend shutdown endpoint called successfully. Waiting for process to exit...",
                 );
             } else {
                 console.error(
-                    `Backend shutdown endpoint returned error: ${response.status} ${response.statusText}. Proceeding with signal termination.`
+                    `Backend shutdown endpoint returned error: ${response.status} ${response.statusText}. Proceeding with signal termination.`,
                 );
                 backendProcess.kill("SIGTERM");
                 console.log("Sent SIGTERM to backend process (as fallback).");
             }
         } catch (error) {
             console.error(
-                `Error calling backend shutdown endpoint: ${error.message}. Proceeding with signal termination.`
+                `Error calling backend shutdown endpoint: ${error.message}. Proceeding with signal termination.`,
             );
             backendProcess.kill("SIGTERM");
             console.log("Sent SIGTERM to backend process (as fallback).");
